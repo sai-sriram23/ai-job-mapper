@@ -1073,8 +1073,10 @@ with col2:
                                                         
                                                         if res_source == "youtube":
                                                             icon = "🎥 [YouTube Tutorial]"
-                                                        else:
+                                                        elif res_source == "research_paper":
                                                             icon = "🎓 [Research Paper]"
+                                                        else:
+                                                            icon = "📖 [Official Documentation]"
                                                             
                                                         st.markdown(f"- **{icon} [{res_title}]({res_url})**")
                                                         if res_desc:

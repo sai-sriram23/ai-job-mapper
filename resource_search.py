@@ -75,3 +75,32 @@ def search_research_papers_tavily(query: str, max_results: int = 2) -> list[dict
             "thumbnail": None,
             "description": f"Search Google Scholar for: {query}"
         }]
+
+
+def search_documentation_tavily(query: str, max_results: int = 2) -> list[dict]:
+    """Search official documentation and reference guides via Tavily."""
+    tavily_query = f"{query} official documentation reference guide manual"
+    resources = []
+    try:
+        search_results = tavily_client.search(query=tavily_query, search_depth="basic")
+        for r in search_results.get("results", []):
+            resources.append({
+                "title": r.get("title", "Official Documentation"),
+                "url": r.get("url", ""),
+                "source": "documentation",
+                "thumbnail": None,
+                "description": r.get("content", "")[:200] if r.get("content") else None
+            })
+        logger.info(f"Tavily found {len(resources)} documentation resources for query '{query}'")
+        return resources[:max_results]
+    except Exception as e:
+        logger.warning(f"Tavily documentation search failed for '{query}': {e}")
+        # Fallback search link
+        return [{
+            "title": f"Search Documentation: {query}",
+            "url": f"https://duckduckgo.com/?q={query.replace(' ', '+')}+documentation",
+            "source": "documentation",
+            "thumbnail": None,
+            "description": f"Search for documentation: {query}"
+        }]
+

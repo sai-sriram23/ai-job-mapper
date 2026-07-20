@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import requests
-from resource_search import search_youtube_tavily, search_research_papers_tavily
+from resource_search import search_youtube_tavily, search_research_papers_tavily, search_documentation_tavily
 from tavily_helper import groq_client
 
 logger = logging.getLogger(__name__)
@@ -88,13 +88,14 @@ Return JSON:
   "table_of_contents": ["Topic 1", "Topic 2", "Topic 3"],
   "resources": [
     {{ "title": "Search Query for YouTube Tutorial Video", "source": "youtube" }},
-    {{ "title": "Search Query for Academic Research Paper", "source": "research_paper" }}
+    {{ "title": "Search Query for Academic Research Paper", "source": "research_paper" }},
+    {{ "title": "Search Query for Official Documentation / Reference Guide", "source": "documentation" }}
   ]
 }}
 
 RULES:
 1. Description should be helpful but efficient.
-2. Provide 2-3 best search queries for resources (focus on YouTube tutorials and academic research papers).
+2. Provide 2-3 best search queries for resources (focus on YouTube tutorials, academic research papers, and official documentation).
 3. JSON ONLY.
 """
 
@@ -403,8 +404,12 @@ def generate_day_details(goal: str, day_title: str, day_number: int, task_type: 
                 res = search_youtube_tavily(q)
                 if res:
                     final_resources.extend(res)
-            else:
+            elif r.get("source") == "research_paper":
                 res = search_research_papers_tavily(q)
+                if res:
+                    final_resources.extend(res)
+            else:
+                res = search_documentation_tavily(q)
                 if res:
                     final_resources.extend(res)
 
