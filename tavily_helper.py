@@ -22,6 +22,28 @@ def _sanitize_text(text):
         return ""
     return text.encode("ascii", errors="ignore").decode("ascii")
 
+
+def parse_insights_json(text):
+    """Robust JSON parser that ensures a dictionary is returned."""
+    text = text.strip()
+    
+    # Remove markdown code fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+        
+    data = json.loads(text)
+    if isinstance(data, str):
+        data = json.loads(data)
+    if isinstance(data, list) and len(data) > 0:
+        data = data[0]
+    if not isinstance(data, dict):
+        raise ValueError("Decoded JSON is not a dictionary object.")
+    return data
+
 SUB_TO_PARENT_ROLE = {
     'ACCESSIBILITY SPECIALIST': 'Software Engineer / Web Developer',
     'AGILE PROJECT MANAGER': 'Project Manager / IT Analyst',
@@ -102,7 +124,7 @@ Search Results:
             temperature=0.1,
             response_format={"type": "json_object"}
         )
-        return json.loads(response.choices[0].message.content)
+        return parse_insights_json(response.choices[0].message.content)
     except Exception as e:
         return {
             "average_salary": "Not available",
@@ -156,7 +178,7 @@ def get_career_why_and_what(job_role, candidate_skills):
             temperature=0.2,
             response_format={"type": "json_object"}
         )
-        return json.loads(response.choices[0].message.content)
+        return parse_insights_json(response.choices[0].message.content)
     except Exception as e:
         return {
             "what": f"A specialized technology role focused on {job_role}.",
@@ -230,7 +252,7 @@ Search Results:
             temperature=0.1,
             response_format={"type": "json_object"}
         )
-        result = json.loads(response.choices[0].message.content)
+        result = parse_insights_json(response.choices[0].message.content)
         # Ensure listings exist
         if not result.get("listings"):
             result["listings"] = []
