@@ -1,0 +1,4 @@
+.env
+__pycache__/
+profile_model.pkl
+tavily_data/

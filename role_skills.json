@@ -1,0 +1,377 @@
+{
+    "Software Engineer": {
+        "required_skills": [
+            "Data Structures",
+            "Algorithms",
+            "Java",
+            "Python",
+            "C++",
+            "Git",
+            "System Design",
+            "SQL",
+            "Object-Oriented Programming"
+        ]
+    },
+    "Web Developer": {
+        "required_skills": [
+            "HTML",
+            "CSS",
+            "JavaScript",
+            "React",
+            "Node.js",
+            "Git",
+            "REST APIs",
+            "SQL",
+            "TypeScript"
+        ]
+    },
+    "Data Scientist": {
+        "required_skills": [
+            "Python",
+            "R",
+            "Machine Learning",
+            "Data Visualization",
+            "SQL",
+            "NoSQL",
+            "Statistics",
+            "Data Mining",
+            "Deep Learning",
+            "TensorFlow"
+        ]
+    },
+    "Machine Learning Engineer": {
+        "required_skills": [
+            "Python",
+            "TensorFlow",
+            "PyTorch",
+            "Scikit-learn",
+            "NumPy",
+            "Pandas",
+            "Matplotlib",
+            "Seaborn",
+            "SQL",
+            "NoSQL",
+            "Deep Learning"
+        ]
+    },
+    "Analyst": {
+        "required_skills": [
+            "SQL",
+            "Excel",
+            "Python",
+            "Tableau",
+            "PowerBI",
+            "Statistics",
+            "Data Visualization",
+            "Pandas"
+        ]
+    },
+    "DevOps Engineer": {
+        "required_skills": [
+            "Linux",
+            "Docker",
+            "Kubernetes",
+            "Jenkins",
+            "CI/CD",
+            "AWS",
+            "Bash",
+            "Git",
+            "Ansible",
+            "Terraform"
+        ]
+    },
+    "UI/UX Designer": {
+        "required_skills": [
+            "User Research",
+            "Wireframing",
+            "Prototyping",
+            "Visual Design",
+            "Interaction Design",
+            "User Experience",
+            "Human-Computer Interaction",
+            "Design Systems",
+            "Front-end Development",
+            "Adobe Creative Suite"
+        ]
+    },
+    "Human Resources Manager": {
+        "required_skills": [
+            "Recruitment",
+            "Talent Management",
+            "Employee Engagement",
+            "Benefits Administration",
+            "Labor Relations",
+            "Performance Management",
+            "HRIS Management",
+            "Compliance Management",
+            "Training and Development",
+            "Data Analysis"
+        ]
+    },
+    "Enterprise Account Executive": {
+        "required_skills": [
+            "Cloud Computing",
+            "Salesforce",
+            "CRM Software",
+            "Account Management",
+            "Business Development",
+            "Sales Strategy",
+            "Negotiation",
+            "Data Analysis",
+            "Market Research",
+            "Digital Transformation"
+        ]
+    },
+    "Account Executive": {
+        "required_skills": [
+            "Salesforce",
+            "CRM Software",
+            "Account Management",
+            "Sales Strategy",
+            "Negotiation",
+            "Communication",
+            "Data Analysis",
+            "Marketing",
+            "Customer Service",
+            "Business Development"
+        ]
+    },
+    "Sales Operations Specialist": {
+        "required_skills": [
+            "Salesforce CRM Administration",
+            "Sales Analytics",
+            "Sales Process Optimization",
+            "Sales Enablement",
+            "Data Visualization",
+            "Sales Forecasting",
+            "Pipeline Management",
+            "Sales Tools Integration",
+            "Business Intelligence",
+            "Data-Driven Decision Making"
+        ]
+    },
+    "Accessibility Specialist": {
+        "required_skills": [
+            "HTML",
+            "CSS",
+            "JavaScript",
+            "WCAG Guidelines",
+            "Section 508 Compliance",
+            "Accessibility Testing Tools",
+            "Screen Reader Technology",
+            "Assistive Technology",
+            "Web Content Accessibility",
+            "ARIA Implementation"
+        ]
+    },
+    "Agile Project Manager": {
+        "required_skills": [
+            "Scrum",
+            "Kanban",
+            "Jira",
+            "Asana",
+            "Trello",
+            "Agile Methodologies",
+            "Project Planning",
+            "Risk Management",
+            "Stakeholder Management",
+            "Microsoft Project"
+        ]
+    },
+    "Business Systems Analyst": {
+        "required_skills": [
+            "Data Analysis",
+            "Business Process Modeling",
+            "Requirements Gathering",
+            "System Design",
+            "Project Management",
+            "SQL",
+            "Data Visualization",
+            "Agile Methodologies",
+            "Cloud Computing",
+            "Database Management"
+        ]
+    },
+    "Cloud Architect": {
+        "required_skills": [
+            "AWS",
+            "Azure",
+            "Google Cloud",
+            "Kubernetes",
+            "Docker",
+            "Python",
+            "Java",
+            "Terraform",
+            "Ansible",
+            "CI/CD"
+        ]
+    },
+    "Computer Graphics Animator": {
+        "required_skills": [
+            "3D Modeling",
+            "Texturing",
+            "Lighting",
+            "Animation",
+            "Visual Effects",
+            "Compositing",
+            "Storyboarding",
+            "Character Rigging",
+            "Keyframe Animation",
+            "Particle Simulation"
+        ]
+    },
+    "Data Analyst": {
+        "required_skills": [
+            "Python",
+            "SQL",
+            "Data Visualization",
+            "Machine Learning",
+            "Statistics",
+            "Excel",
+            "Tableau",
+            "Power BI",
+            "R",
+            "Data Mining"
+        ]
+    },
+    "Data Modeler": {
+        "required_skills": [
+            "Data Warehousing",
+            "ETL Tools",
+            "Data Modeling Tools",
+            "SQL",
+            "Data Governance",
+            "Data Quality",
+            "Metadata Management",
+            "Database Design",
+            "Data Architecture",
+            "Business Intelligence"
+        ]
+    },
+    "Devops Manager": {
+        "required_skills": [
+            "Cloud Computing",
+            "Containerization",
+            "Kubernetes",
+            "Docker",
+            "Ansible",
+            "Jenkins",
+            "Python",
+            "Azure DevOps",
+            "Terraform",
+            "Git"
+        ]
+    },
+    "Frameworks Specialist": {
+        "required_skills": [
+            "Java",
+            "Python",
+            "React",
+            "Angular",
+            "Vue.js",
+            "Node.js",
+            "Ruby on Rails",
+            "Django",
+            "Spring Boot",
+            "ASP.NET"
+        ]
+    },
+    "Information Architect": {
+        "required_skills": [
+            "XML",
+            "HTML",
+            "JavaScript",
+            "CSS",
+            "Information Design",
+            "Taxonomy",
+            "Metadata",
+            "Content Strategy",
+            "User Experience",
+            "Data Modeling"
+        ]
+    },
+    "Interaction Designer": {
+        "required_skills": [
+            "User Experience (UX) Design",
+            "User Interface (UI) Design",
+            "Human-Computer Interaction",
+            "Prototyping",
+            "Wireframing",
+            "Interaction Design Tools",
+            "Design Thinking",
+            "Visual Design",
+            "Front-end Development",
+            "Usability Testing"
+        ]
+    },
+    "Mobile App Developer": {
+        "required_skills": [
+            "Java",
+            "Swift",
+            "Kotlin",
+            "React Native",
+            "Flutter",
+            "JavaScript",
+            "HTML5",
+            "CSS3",
+            "iOS Development",
+            "Android Studio"
+        ]
+    },
+    "Product Manager": {
+        "required_skills": [
+            "Data Analysis",
+            "Product Development",
+            "Project Management",
+            "Marketing Strategy",
+            "User Experience",
+            "Agile Methodologies",
+            "Cloud Computing",
+            "Artificial Intelligence",
+            "Machine Learning",
+            "SQL Database"
+        ]
+    },
+    "Security Specialist": {
+        "required_skills": [
+            "Network Security",
+            "Cryptography",
+            "Penetration Testing",
+            "Incident Response",
+            "Compliance Management",
+            "Risk Assessment",
+            "Firewall Configuration",
+            "Intrusion Detection",
+            "Vulnerability Management",
+            "Access Control"
+        ]
+    },
+    "Technical Account Manager": {
+        "required_skills": [
+            "Cloud Computing",
+            "Cyber Security",
+            "Data Analytics",
+            "IT Service Management",
+            "Network Architecture",
+            "Project Management",
+            "Software Development",
+            "Technical Sales",
+            "Troubleshooting",
+            "Vendor Management"
+        ]
+    },
+    "Technical Lead": {
+        "required_skills": [
+            "Java",
+            "Python",
+            "Cloud Computing",
+            "Data Structures",
+            "Algorithms",
+            "Machine Learning",
+            "Database Management",
+            "Cyber Security",
+            "Networking",
+            "DevOps"
+        ]
+    }
+}
