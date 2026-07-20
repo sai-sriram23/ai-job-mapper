@@ -9,14 +9,13 @@ from resume_parser import extract_resume_text, analyze_resume_profile, suggest_n
 #from ats_engine import extract_resume_skills
 from skill_mapper import load_database
 from tavily_helper import SUB_TO_PARENT_ROLE
-import asyncio
 from course_generator import (
     check_ollama_health,
     list_models,
     generate_course_outline,
     generate_week_details,
     generate_day_details,
-    run_async
+    call_ollama_chat
 )
 
 
@@ -865,14 +864,14 @@ with col2:
                         st.error(f"Failed to fetch job opportunities: {str(jobs_err)}")
                         
             with tab6:
-                st.write("### 📚 Locally Powered AI Course Generator")
-                st.write("Generate a personalized week-by-week learning roadmap on any technical skill using a local Ollama model.")
+                st.write("### 📚 AI Course Generator & local Assistant")
+                st.write("Generate a personalized week-by-week learning roadmap (via Groq), research documents (via Tavily), and discuss topics with a local Ollama Chatbot.")
                 
                 # Check health
                 @st.cache_resource(ttl=30)
                 def get_ollama_status():
                     try:
-                        return run_async(check_ollama_health())
+                        return check_ollama_health()
                     except Exception as e:
                         return {"status": "disconnected", "error": str(e)}
 
@@ -888,7 +887,7 @@ with col2:
                     @st.cache_data(ttl=60)
                     def get_cached_models():
                         try:
-                            return run_async(list_models())
+                            return list_models()
                         except Exception:
                             return []
 
@@ -909,7 +908,7 @@ with col2:
                                 default_model_idx = idx
                                 
                         selected_model = st.selectbox(
-                            "Select Local Ollama Model",
+                            "Select Local Ollama Model (for Chatbot)",
                             options=model_names,
                             index=default_model_idx
                         )
@@ -952,23 +951,27 @@ with col2:
                         if "course_days" not in st.session_state:
                             st.session_state["course_days"] = {}
                             
-                        # If the user switches goals or models, clear previous course state
-                        state_key = f"{learning_goal}_{selected_model}"
+                        # If the user switches goals, clear previous course state
+                        state_key = f"{learning_goal}"
                         if st.session_state.get("course_state_key") != state_key:
                             st.session_state["course_state_key"] = state_key
                             st.session_state["course_outline"] = None
                             st.session_state["course_weeks"] = {}
                             st.session_state["course_days"] = {}
+                            if "chat_messages" in st.session_state:
+                                del st.session_state["chat_messages"]
                             
                         generate_course_btn = st.button("Generate Course Outline")
                         
                         if generate_course_btn:
-                            with st.spinner("Generating weekly course outline using local LLM... (This may take a moment)"):
+                            with st.spinner("Generating weekly course outline using Groq API..."):
                                 try:
-                                    outline = run_async(generate_course_outline(learning_goal, selected_model))
+                                    outline = generate_course_outline(learning_goal)
                                     st.session_state["course_outline"] = outline
                                     st.session_state["course_weeks"] = {}
                                     st.session_state["course_days"] = {}
+                                    if "chat_messages" in st.session_state:
+                                        del st.session_state["chat_messages"]
                                     st.success("Successfully generated course outline!")
                                     st.rerun()
                                 except Exception as gen_err:
@@ -1009,11 +1012,11 @@ with col2:
                                     if not week_details:
                                         load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
                                         if load_week_btn:
-                                            with st.spinner(f"Generating daily tasks for Week {w_num}..."):
+                                            with st.spinner(f"Generating daily tasks for Week {w_num} using Groq..."):
                                                 try:
-                                                    w_data = run_async(generate_week_details(
-                                                        learning_goal, w_num, w_title, w_concepts, selected_model
-                                                    ))
+                                                    w_data = generate_week_details(
+                                                        learning_goal, w_num, w_title, w_concepts
+                                                    )
                                                     st.session_state["course_weeks"][week_key] = w_data
                                                     st.rerun()
                                                 except Exception as w_err:
@@ -1040,11 +1043,11 @@ with col2:
                                             if not day_content:
                                                 load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
                                                 if load_day_btn:
-                                                    with st.spinner(f"Fetching lesson and resource links for Day {d_num}..."):
+                                                    with st.spinner(f"Generating details via Groq & searching resources via Tavily..."):
                                                         try:
-                                                            d_data = run_async(generate_day_details(
-                                                                learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration, selected_model
-                                                            ))
+                                                            d_data = generate_day_details(
+                                                                learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration
+                                                            )
                                                             st.session_state["course_days"][day_key] = d_data
                                                             st.rerun()
                                                         except Exception as d_err:
@@ -1061,7 +1064,7 @@ with col2:
                                                 # Resources rendering
                                                 resources = day_content.get("resources", [])
                                                 if resources:
-                                                    st.write("**🎥 Recommended Resources & Tutorials:**")
+                                                    st.write("**🔎 Recommended Resources & Tutorials (via Tavily):**")
                                                     for res in resources:
                                                         res_title = res.get("title", "Resource")
                                                         res_url = res.get("url", "#")
@@ -1069,15 +1072,57 @@ with col2:
                                                         res_desc = res.get("description", "")
                                                         
                                                         if res_source == "youtube":
-                                                            icon = "🎥 [YouTube]"
+                                                            icon = "🎥 [YouTube Tutorial]"
                                                         else:
-                                                            icon = "🌐 [Web]"
+                                                            icon = "🎓 [Research Paper]"
                                                             
                                                         st.markdown(f"- **{icon} [{res_title}]({res_url})**")
                                                         if res_desc:
                                                             st.markdown(f"  *{res_desc}*")
                                                             
                                             st.markdown("---")
+                                            
+                            # ─── Chatbot Section ───────────────────
+                            st.markdown("---")
+                            st.markdown("### 💬 Course Chatbot Assistant (Ollama)")
+                            st.write(f"Ask the chatbot questions about the **{outline.get('title')}** course. Responses are processed locally using `{selected_model}`.")
+                            
+                            # Initialize chatbot message history
+                            if "chat_messages" not in st.session_state:
+                                st.session_state["chat_messages"] = []
+                                
+                            # Display messages
+                            for msg in st.session_state["chat_messages"]:
+                                with st.chat_message(msg["role"]):
+                                    st.markdown(msg["content"])
+                                    
+                            # Input
+                            if user_chat_input := st.chat_input("Type your question here..."):
+                                # Render user message
+                                with st.chat_message("user"):
+                                    st.markdown(user_chat_input)
+                                st.session_state["chat_messages"].append({"role": "user", "content": user_chat_input})
+                                
+                                # Send query to Ollama
+                                with st.spinner("AI Tutor is thinking..."):
+                                    try:
+                                        chat_payload = [
+                                            {"role": "system", "content": "You are a professional educational tutor. Provide helpful and deep explanations to students based on their course details."},
+                                            {"role": "system", "content": f"The student is taking a course titled '{outline.get('title')}' with goal '{learning_goal}'. Description: '{outline.get('description')}'."},
+                                        ]
+                                        # Append last 8 messages
+                                        for msg in st.session_state["chat_messages"][-8:]:
+                                            chat_payload.append({"role": msg["role"], "content": msg["content"]})
+                                            
+                                        assistant_response = call_ollama_chat(selected_model, chat_payload)
+                                        
+                                        # Render response
+                                        with st.chat_message("assistant"):
+                                            st.markdown(assistant_response)
+                                        st.session_state["chat_messages"].append({"role": "assistant", "content": assistant_response})
+                                        st.rerun()
+                                    except Exception as chat_err:
+                                        st.error(f"Chatbot failed: {str(chat_err)}")
     else:
         # Default placeholder container with rich instructions
         st.markdown("""
