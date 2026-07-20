@@ -187,7 +187,9 @@ def suggest_new_role_ai(resume_text, resume_skills):
 You are an expert AI Career Advisor.
 The candidate's profile and resume do not match any of our standard career categories (Analyst, Data Scientist, Software Engineer, Web Developer, DevOps, etc.).
 
-Analyze the candidate's resume content and technical skills to suggest a single, most suitable specialized job role. Also, provide a list of exactly 10 standard technical skills required for this recommended job role.
+Analyze the candidate's resume content and technical skills to suggest a single, most suitable specialized job role. Make sure the suggested role explicitly states the broader parent category it belongs to if it is a sub-role (e.g. "Accessibility Specialist (under Web Developer)" or "Frameworks Specialist (under Software Engineer)").
+
+Also, provide a list of exactly 10 standard technical skills required for this recommended job role.
 
 Return ONLY JSON.
 

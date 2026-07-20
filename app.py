@@ -8,6 +8,17 @@ import joblib
 from resume_parser import extract_resume_text, analyze_resume_profile, suggest_new_role_ai
 #from ats_engine import extract_resume_skills
 from skill_mapper import load_database
+from tavily_helper import SUB_TO_PARENT_ROLE
+import asyncio
+from course_generator import (
+    check_ollama_health,
+    list_models,
+    generate_course_outline,
+    generate_week_details,
+    generate_day_details,
+    run_async
+)
+
 
 # Ensure environment variables are loaded
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -287,6 +298,11 @@ with st.sidebar:
     st.success("✅ AI Fallback Suggestion: Enabled")
     
     st.markdown("---")
+    if st.button("🔄 Clear App Cache"):
+        st.cache_data.clear()
+        st.success("Cache cleared successfully!")
+        st.rerun()
+        
     st.markdown("🔒 *Processing is private and temporary.*")
 
 # Initialize session state for resume extraction
@@ -554,11 +570,15 @@ with col2:
                 sk_sc = rec["skill_score"]
                 pr_sc = rec["profile_score"]
                 
+                parent_role = SUB_TO_PARENT_ROLE.get(role_name.upper())
+                parent_html = f'<div style="font-size: 0.82rem; color: #a5b4fc; margin-top: -5px; margin-bottom: 8px;">Sub-role of {parent_role}</div>' if parent_role else ""
+                
                 with cols[idx]:
                     st.markdown(f"""
                     <div class="glass-card" style="border-color: rgba(16, 185, 129, 0.4); min-height: 220px; padding: 20px; margin-bottom: 15px;">
                         <span style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #34d399; font-weight: 700;">🏆 #{idx+1} Recommendation</span>
                         <h3 style="margin: 10px 0 5px 0; font-size: 1.4rem; color: #6ee7b7 !important;">{role_name}</h3>
+                        {parent_html}
                         <p style="color: #e5e7eb; font-size: 0.95rem; margin-bottom: 12px;">Combined Fit: <strong>{score}% Match</strong></p>
                         <p style="color: #9ca3af; font-size: 0.8rem; line-height: 1.4;">
                             Academic Fit: {pr_sc}%<br/>
@@ -592,17 +612,19 @@ with col2:
             for idx, rec in enumerate(skill_recs[:10]):
                 role = rec["role"]
                 score = rec["score"]
-                sk_ml = rec["skills_ml_score"]
                 sk_sc = rec["skill_score"]
                 pr_sc = rec["profile_score"]
                 
                 is_top = (idx == 0)
                 bar_class = "rec-bar-fill rec-bar-fill-top" if is_top else "rec-bar-fill"
                 
+                p_role = SUB_TO_PARENT_ROLE.get(role.upper())
+                role_display = f"{role} <span style='font-size: 0.85rem; color: #a5b4fc;'>(Sub-role of {p_role})</span>" if p_role else role
+                
                 st.markdown(f"""
                 <div class="rec-item">
                     <div class="rec-label-container">
-                        <span>{role}</span>
+                        <span>{role_display}</span>
                         <span style="color: #9ca3af; font-size: 0.85rem;">(Academic Fit: {pr_sc}% | Skill Match: {sk_sc}% | Model Conf: {sk_ml}%)</span>
                         <span>{score}% Match</span>
                     </div>
@@ -622,7 +644,8 @@ with col2:
             
         selected_role = st.selectbox(
             "Select any recommended role to view details and ATS gap analysis:",
-            options=list(all_recs_map.keys())
+            options=list(all_recs_map.keys()),
+            format_func=lambda x: f"{x} (Sub-role of {SUB_TO_PARENT_ROLE.get(x.upper())})" if SUB_TO_PARENT_ROLE.get(x.upper()) else x
         )
         
         selected_rec = all_recs_map[selected_role]
@@ -667,16 +690,19 @@ with col2:
             """, unsafe_allow_html=True)
             
         with col_m2:
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "✨ Skills Gap Analysis", 
                 "📋 Required Role Skills", 
                 "📝 Your Extracted/Entered Skills",
                 "📈 Real-Time Market Insights (Tavily)",
-                "💼 Apply to Jobs/Internships"
+                "💼 Apply to Jobs/Internships",
+                "📚 Course Generator (Ollama)"
             ])
             
             with tab1:
-                st.write(f"Compare your skills against the requirements for **{selected_role}**:")
+                p_role = SUB_TO_PARENT_ROLE.get(selected_role.upper())
+                parent_suffix = f" (specialized sub-role under **{p_role}**)" if p_role else ""
+                st.write(f"Compare your skills against the requirements for **{selected_role}**{parent_suffix}:")
                 
                 st.markdown("#### ✅ Matched Technical Skills")
                 if matched:
@@ -837,6 +863,221 @@ with col2:
                             st.info("No active jobs or internships found for this role at the moment. Please try searching again later.")
                     except Exception as jobs_err:
                         st.error(f"Failed to fetch job opportunities: {str(jobs_err)}")
+                        
+            with tab6:
+                st.write("### 📚 Locally Powered AI Course Generator")
+                st.write("Generate a personalized week-by-week learning roadmap on any technical skill using a local Ollama model.")
+                
+                # Check health
+                @st.cache_resource(ttl=30)
+                def get_ollama_status():
+                    try:
+                        return run_async(check_ollama_health())
+                    except Exception as e:
+                        return {"status": "disconnected", "error": str(e)}
+
+                health_data = get_ollama_status()
+                
+                if health_data.get("status") != "connected":
+                    st.error("❌ Ollama is disconnected. Please make sure Ollama is running locally on port 11434.")
+                    st.info("💡 Tip: Start the Ollama application or run `ollama serve` in your terminal. You also need to pull a model, e.g., `ollama pull deepseek-r1:1.5b`.")
+                else:
+                    st.success("✅ Ollama is connected locally!")
+                    
+                    # Fetch models
+                    @st.cache_data(ttl=60)
+                    def get_cached_models():
+                        try:
+                            return run_async(list_models())
+                        except Exception:
+                            return []
+
+                    local_models = get_cached_models()
+                    model_names = [m["name"] for m in local_models] if local_models else []
+                    
+                    if not model_names:
+                        st.warning("⚠️ No local Ollama models found. Please pull a model first.")
+                        st.code("ollama pull deepseek-r1:1.5b")
+                    else:
+                        # Find defaults or deepseek-r1:1.5b
+                        default_model_idx = 0
+                        for idx, m in enumerate(model_names):
+                            if "deepseek-r1:1.5b" in m:
+                                default_model_idx = idx
+                                break
+                            elif "llama3" in m:
+                                default_model_idx = idx
+                                
+                        selected_model = st.selectbox(
+                            "Select Local Ollama Model",
+                            options=model_names,
+                            index=default_model_idx
+                        )
+                        
+                        # Goal options
+                        st.markdown("#### Choose Learning Goal")
+                        
+                        # Populate options from selected role or missing skills
+                        goal_options = []
+                        if selected_role:
+                            goal_options.append(f"Learn {selected_role}")
+                        if missing:
+                            for ms in missing:
+                                goal_options.append(f"Master {ms}")
+                        goal_options.append("Custom Goal...")
+                        
+                        goal_choice = st.selectbox(
+                            "Select a goal based on your recommendations or input custom",
+                            options=goal_options,
+                            index=0
+                        )
+                        
+                        if goal_choice == "Custom Goal...":
+                            learning_goal = st.text_input("Enter custom learning goal:", value="Learn Python Programming")
+                        else:
+                            if goal_choice.startswith("Learn "):
+                                learning_goal = goal_choice[6:]
+                            elif goal_choice.startswith("Master "):
+                                learning_goal = goal_choice[7:]
+                            else:
+                                learning_goal = goal_choice
+                            
+                        # Course outline state management in session state
+                        if "course_goal" not in st.session_state:
+                            st.session_state["course_goal"] = ""
+                        if "course_outline" not in st.session_state:
+                            st.session_state["course_outline"] = None
+                        if "course_weeks" not in st.session_state:
+                            st.session_state["course_weeks"] = {}
+                        if "course_days" not in st.session_state:
+                            st.session_state["course_days"] = {}
+                            
+                        # If the user switches goals or models, clear previous course state
+                        state_key = f"{learning_goal}_{selected_model}"
+                        if st.session_state.get("course_state_key") != state_key:
+                            st.session_state["course_state_key"] = state_key
+                            st.session_state["course_outline"] = None
+                            st.session_state["course_weeks"] = {}
+                            st.session_state["course_days"] = {}
+                            
+                        generate_course_btn = st.button("Generate Course Outline")
+                        
+                        if generate_course_btn:
+                            with st.spinner("Generating weekly course outline using local LLM... (This may take a moment)"):
+                                try:
+                                    outline = run_async(generate_course_outline(learning_goal, selected_model))
+                                    st.session_state["course_outline"] = outline
+                                    st.session_state["course_weeks"] = {}
+                                    st.session_state["course_days"] = {}
+                                    st.success("Successfully generated course outline!")
+                                    st.rerun()
+                                except Exception as gen_err:
+                                    st.error(f"Failed to generate course outline: {str(gen_err)}")
+                                    
+                        outline = st.session_state["course_outline"]
+                        if outline:
+                            st.markdown(f"### 📖 Course: {outline.get('title', learning_goal)}")
+                            st.write(outline.get("description", ""))
+                            
+                            prereqs = outline.get("prerequisites", [])
+                            if prereqs:
+                                st.markdown("**📋 Prerequisites & Basics:**")
+                                prereqs_badges = "".join([f'<span class="badge badge-normal" style="margin-right: 5px;">{p}</span>' for p in prereqs])
+                                st.markdown(f'<div>{prereqs_badges}</div><br>', unsafe_allow_html=True)
+                                    
+                            st.markdown("---")
+                            st.markdown("### 📅 Weekly Syllabus")
+                            
+                            weeks = outline.get("weeks", [])
+                            for w in weeks:
+                                w_num = w.get("week")
+                                w_title = w.get("title", f"Week {w_num}")
+                                w_concepts = w.get("concepts", [])
+                                w_focus = w.get("focus", "theory")
+                                
+                                week_key = f"w_{w_num}"
+                                
+                                with st.expander(f"Week {w_num}: {w_title} ({w_focus.capitalize()})"):
+                                    if w_concepts:
+                                        st.write("**Core Concepts:**")
+                                        badges = "".join([f'<span class="concept-tag" style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; font-size: 0.8rem; margin: 3px; border: 1px solid rgba(99, 102, 241, 0.2);">{c}</span>' for c in w_concepts])
+                                        st.markdown(f'<div>{badges}</div><br>', unsafe_allow_html=True)
+                                        
+                                    # Check if days breakdown for this week is loaded
+                                    week_details = st.session_state["course_weeks"].get(week_key)
+                                    
+                                    if not week_details:
+                                        load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
+                                        if load_week_btn:
+                                            with st.spinner(f"Generating daily tasks for Week {w_num}..."):
+                                                try:
+                                                    w_data = run_async(generate_week_details(
+                                                        learning_goal, w_num, w_title, w_concepts, selected_model
+                                                    ))
+                                                    st.session_state["course_weeks"][week_key] = w_data
+                                                    st.rerun()
+                                                except Exception as w_err:
+                                                    st.error(f"Failed to load week details: {str(w_err)}")
+                                    else:
+                                        days = week_details.get("days", [])
+                                        st.write("**Daily Schedule:**")
+                                        for d in days:
+                                            d_num = d.get("day")
+                                            d_title = d.get("title", f"Day {d_num}")
+                                            d_type = d.get("task_type", "theory")
+                                            d_duration = d.get("duration_minutes", 60)
+                                            d_concepts = d.get("concepts", [])
+                                            
+                                            day_key = f"d_{w_num}_{d_num}"
+                                            
+                                            st.markdown(f"**Day {d_num}: {d_title}**")
+                                            st.caption(f"⏱ {d_duration} mins | 🏷 Type: {d_type.capitalize()}")
+                                            if d_concepts:
+                                                st.write("Concepts: " + ", ".join(d_concepts))
+                                                
+                                            # Lazy load day content
+                                            day_content = st.session_state["course_days"].get(day_key)
+                                            if not day_content:
+                                                load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
+                                                if load_day_btn:
+                                                    with st.spinner(f"Fetching lesson and resource links for Day {d_num}..."):
+                                                        try:
+                                                            d_data = run_async(generate_day_details(
+                                                                learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration, selected_model
+                                                            ))
+                                                            st.session_state["course_days"][day_key] = d_data
+                                                            st.rerun()
+                                                        except Exception as d_err:
+                                                            st.error(f"Failed to load day content: {str(d_err)}")
+                                            else:
+                                                st.markdown(f"**Explanation:**\n{day_content.get('description', '')}")
+                                                
+                                                toc = day_content.get("table_of_contents", [])
+                                                if toc:
+                                                    st.write("**Topics Covered:**")
+                                                    for item in toc:
+                                                        st.markdown(f"- {item}")
+                                                        
+                                                # Resources rendering
+                                                resources = day_content.get("resources", [])
+                                                if resources:
+                                                    st.write("**🎥 Recommended Resources & Tutorials:**")
+                                                    for res in resources:
+                                                        res_title = res.get("title", "Resource")
+                                                        res_url = res.get("url", "#")
+                                                        res_source = res.get("source", "web")
+                                                        res_desc = res.get("description", "")
+                                                        
+                                                        if res_source == "youtube":
+                                                            icon = "🎥 [YouTube]"
+                                                        else:
+                                                            icon = "🌐 [Web]"
+                                                            
+                                                        st.markdown(f"- **{icon} [{res_title}]({res_url})**")
+                                                        if res_desc:
+                                                            st.markdown(f"  *{res_desc}*")
+                                                            
+                                            st.markdown("---")
     else:
         # Default placeholder container with rich instructions
         st.markdown("""

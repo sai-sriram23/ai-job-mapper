@@ -22,9 +22,32 @@ def _sanitize_text(text):
         return ""
     return text.encode("ascii", errors="ignore").decode("ascii")
 
+SUB_TO_PARENT_ROLE = {
+    'ACCESSIBILITY SPECIALIST': 'Software Engineer / Web Developer',
+    'AGILE PROJECT MANAGER': 'Project Manager / IT Analyst',
+    'BUSINESS SYSTEMS ANALYST': 'Business Analyst / Systems Analyst',
+    'CLOUD ARCHITECT': 'Cloud Engineer / Software Engineer',
+    'COMPUTER GRAPHICS ANIMATOR': 'Web Developer / UI Designer',
+    'DATA ANALYST': 'Data Analyst / Business Intelligence',
+    'DATA MODELER': 'Data Engineer / Data Scientist',
+    'DATA SCIENTIST': 'Data Scientist / Machine Learning Engineer',
+    'DEVOPS MANAGER': 'DevOps Engineer / Software Engineer',
+    'FRAMEWORKS SPECIALIST': 'Software Engineer / Web Developer',
+    'INFORMATION ARCHITECT': 'UX Designer / Analyst',
+    'INTERACTION DESIGNER': 'UI/UX Designer / Web Developer',
+    'MOBILE APP DEVELOPER': 'Software Engineer / Mobile Developer',
+    'PRODUCT MANAGER': 'Product Manager / Business Analyst',
+    'SECURITY SPECIALIST': 'Cybersecurity Engineer / Software Engineer',
+    'TECHNICAL ACCOUNT MANAGER': 'IT Specialist / Customer Success Engineer',
+    'TECHNICAL LEAD': 'Software Engineer / Technical Lead'
+}
+
 def get_job_market_insights(job_role):
+    parent_role = SUB_TO_PARENT_ROLE.get(job_role.upper())
+    role_context = f"{job_role} (specialized sub-role under {parent_role})" if parent_role else job_role
+
     # 1. Query Tavily for live facts
-    query = f"current job market trends, average salary range, top companies hiring, required certifications, project ideas, and interview questions for: {job_role}"
+    query = f"current job market trends, average salary range, top companies hiring, required certifications, project ideas, and interview questions for: {role_context}"
     try:
         search_results = tavily_client.search(query=query, search_depth="basic")
         results_text = "\n".join([_sanitize_text(r.get("content", "")) for r in search_results.get("results", [])])
@@ -32,11 +55,13 @@ def get_job_market_insights(job_role):
         results_text = f"Failed to fetch live search results: {str(e)}"
         
     # 2. Use Groq to structure the search results into a clean JSON format
+    parent_clause = f"Ensure the summaries and insights specify that this is a sub-job role under the broader parent category of '{parent_role}'." if parent_role else ""
     prompt = f"""
 You are an expert career advisor and research analyst.
-Below are some live search results about the job market for the role of '{job_role}'.
+Below are some live search results about the job market for the role of '{role_context}'.
 
 Summarize and structure this information into a valid JSON object.
+{parent_clause}
 
 Format:
 {{
@@ -89,23 +114,30 @@ Search Results:
             "learning_roadmap": "Not available"
         }
 
+
 def get_career_why_and_what(job_role, candidate_skills):
     skills_str = ", ".join(candidate_skills)
-    query = f"what is a {job_role} role? why would a candidate with skills {skills_str} be recommended for it?"
+    parent_role = SUB_TO_PARENT_ROLE.get(job_role.upper())
+    role_context = f"{job_role} (specialized sub-role under {parent_role})" if parent_role else job_role
+
+    query = f"what is a {role_context} role? why would a candidate with skills {skills_str} be recommended for it?"
     try:
         search_results = tavily_client.search(query=query, search_depth="basic")
         results_text = "\n".join([_sanitize_text(r.get("content", "")) for r in search_results.get("results", [])])
     except Exception as e:
         results_text = f"Failed to fetch live search results: {str(e)}"
         
+    parent_clause = f"Explain what the sub-role '{job_role}' is, how it relates to its parent category of '{parent_role}', and why this is a good fit." if parent_role else f"explain 'What' the job role '{job_role}' is, and 'Why' this role is suggested."
     prompt = f"""
     You are an expert career advisor.
     Based on the search results and the candidate's skills: {skills_str},
     explain "What" the job role '{job_role}' is, and "Why" this role is suggested for the candidate.
     
+    {parent_clause}
+    
     Structure the response into a JSON object:
     {{
-        "what": "Clear, concise definition of what the '{job_role}' role is and what they do.",
+        "what": "Clear, concise definition of what the '{job_role}' role is and what they do, clarifying its placement under the '{parent_role or ''}' domain.",
         "why": "Clear, customized explanation of why this role is suggested, linking candidate's skills specifically to the job expectations."
     }}
     
@@ -133,7 +165,12 @@ def get_career_why_and_what(job_role, candidate_skills):
 
 def get_active_jobs_and_internships(job_role):
     """Query Tavily for current job postings AND internship openings, then structure via Groq."""
-    query = f"latest {job_role} job openings AND internship opportunities 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com OR site:glassdoor.com OR site:internshala.com"
+    parent_role = SUB_TO_PARENT_ROLE.get(job_role.upper())
+    if parent_role:
+        query = f"latest {job_role} ({parent_role}) job openings AND internship opportunities 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com OR site:glassdoor.com OR site:internshala.com"
+    else:
+        query = f"latest {job_role} job openings AND internship opportunities 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com OR site:glassdoor.com OR site:internshala.com"
+        
     try:
         search_results = tavily_client.search(query=query, search_depth="basic")
         results_text = ""
@@ -145,9 +182,10 @@ def get_active_jobs_and_internships(job_role):
     except Exception as e:
         results_text = f"Failed to fetch live search results: {str(e)}"
 
+    role_clause = f"opportunities for the sub-role '{job_role}' (which belongs under the '{parent_role}' parent category)" if parent_role else f"opportunities for the role '{job_role}'"
     prompt = f"""
 You are an expert recruitment advisor.
-Analyze the search results below and extract a list of 6-8 real, active job or internship opportunities for the role '{job_role}'.
+Analyze the search results below and extract a list of 6-8 real, active job or internship {role_clause}.
 Include a MIX of both full-time jobs AND internships.
 Extract their title, company, source platform (e.g. LinkedIn, Naukri, Indeed, Internshala, Glassdoor), type ("Job" or "Internship"), the actual application URL, and a brief description.
 
@@ -237,3 +275,4 @@ Search Results:
                 }
             ]
         }
+
