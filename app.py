@@ -361,12 +361,20 @@ with col1:
     if uploaded_file:
         file_key = f"{uploaded_file.name}_{uploaded_file.size}"
         if st.session_state["last_uploaded_file_key"] != file_key:
-            with st.spinner("🔍 Parsing resume and extracting skills..."):
+            with st.spinner("🔍 Parsing resume and extracting technical skills..."):
                 try:
                     resume_profile = analyze_resume_profile(uploaded_file)
-                    st.session_state["extracted_skills_str"] = ", ".join(resume_profile["skills"])
-                    st.session_state["resume_text"] = resume_profile["resume_text"]
+                    skills_extracted = resume_profile.get("skills", [])
+                    extracted_skills_str = ", ".join(skills_extracted)
+                    st.session_state["extracted_skills_str"] = extracted_skills_str
+                    st.session_state["resume_text"] = resume_profile.get("resume_text", "")
                     st.session_state["last_uploaded_file_key"] = file_key
+                    st.session_state["c_skills_input_key"] = extracted_skills_str
+                    if skills_extracted:
+                        st.toast(f"✅ Extracted {len(skills_extracted)} skills from resume!", icon="🎉")
+                    else:
+                        st.warning("⚠️ No technical skills were automatically detected from the resume text. You can manually enter skills below.")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error parsing resume: {str(e)}")
     else:
@@ -374,15 +382,16 @@ with col1:
             st.session_state["last_uploaded_file_key"] = None
             st.session_state["extracted_skills_str"] = ""
             st.session_state["resume_text"] = ""
+            st.session_state["c_skills_input_key"] = "Python, SQL, Git"
+            st.rerun()
             
-    # Decide value for technical skills text area
-    default_skills = st.session_state["extracted_skills_str"]
-    if not default_skills and not uploaded_file:
-        default_skills = "Python, SQL, Git"
+    # Initialize widget key if not in session state
+    if "c_skills_input_key" not in st.session_state:
+        st.session_state["c_skills_input_key"] = st.session_state["extracted_skills_str"] or "Python, SQL, Git"
         
     c_skills_input = st.text_area(
         "Technical Skills (separated by commas)",
-        value=default_skills,
+        key="c_skills_input_key",
         placeholder="e.g. HTML, CSS, JavaScript, React, Node.js, SQL",
         help="Skills extracted from your resume will appear here automatically. You can also manually edit, add, or delete skills directly."
     )
@@ -864,10 +873,10 @@ with col2:
                         st.error(f"Failed to fetch job opportunities: {str(jobs_err)}")
                         
             with tab6:
-                st.write("### 📚 AI Course Generator & local Assistant")
-                st.write("Generate a personalized week-by-week learning roadmap (via Groq), research documents (via Tavily), and discuss topics with a local Ollama Chatbot.")
+                st.write("### 📚 AI Course Generator & Educational Assistant")
+                st.write("Generate a personalized week-by-week learning roadmap (via Groq AI), search research resources (via Tavily), and discuss topics with an AI Assistant.")
                 
-                # Check health
+                # Check health of local Ollama server
                 @st.cache_resource(ttl=30)
                 def get_ollama_status():
                     try:
@@ -876,249 +885,227 @@ with col2:
                         return {"status": "disconnected", "error": str(e)}
 
                 health_data = get_ollama_status()
+                ollama_connected = (health_data.get("status") == "connected")
                 
-                if health_data.get("status") != "connected":
-                    st.error("❌ Ollama is disconnected. Please make sure Ollama is running locally on port 11434.")
-                    st.info("💡 Tip: Start the Ollama application or run `ollama serve` in your terminal. You also need to pull a model, e.g., `ollama pull deepseek-r1:1.5b`.")
+                # Populate learning goal options from selected role or missing skills
+                goal_options = []
+                if selected_role:
+                    goal_options.append(f"Learn {selected_role}")
+                if missing:
+                    for ms in missing:
+                        goal_options.append(f"Master {ms}")
+                goal_options.append("Custom Goal...")
+                
+                st.markdown("#### 🎯 Choose Learning Goal")
+                goal_choice = st.selectbox(
+                    "Select a goal based on your recommendations or enter a custom topic:",
+                    options=goal_options,
+                    index=0
+                )
+                
+                if goal_choice == "Custom Goal...":
+                    learning_goal = st.text_input("Enter custom learning goal:", value="Learn Python Programming")
                 else:
-                    st.success("✅ Ollama is connected locally!")
-                    
-                    # Fetch models
-                    @st.cache_data(ttl=60)
-                    def get_cached_models():
-                        try:
-                            return list_models()
-                        except Exception:
-                            return []
-
-                    local_models = get_cached_models()
-                    model_names = [m["name"] for m in local_models] if local_models else []
-                    
-                    if not model_names:
-                        st.warning("⚠️ No local Ollama models found. Please pull a model first.")
-                        st.code("ollama pull deepseek-r1:1.5b")
+                    if goal_choice.startswith("Learn "):
+                        learning_goal = goal_choice[6:]
+                    elif goal_choice.startswith("Master "):
+                        learning_goal = goal_choice[7:]
                     else:
-                        # Find defaults or deepseek-r1:1.5b
-                        default_model_idx = 0
-                        for idx, m in enumerate(model_names):
-                            if "deepseek-r1:1.5b" in m:
-                                default_model_idx = idx
-                                break
-                            elif "llama3" in m:
-                                default_model_idx = idx
-                                
-                        selected_model = st.selectbox(
-                            "Select Local Ollama Model (for Chatbot)",
-                            options=model_names,
-                            index=default_model_idx
-                        )
-                        
-                        # Goal options
-                        st.markdown("#### Choose Learning Goal")
-                        
-                        # Populate options from selected role or missing skills
-                        goal_options = []
-                        if selected_role:
-                            goal_options.append(f"Learn {selected_role}")
-                        if missing:
-                            for ms in missing:
-                                goal_options.append(f"Master {ms}")
-                        goal_options.append("Custom Goal...")
-                        
-                        goal_choice = st.selectbox(
-                            "Select a goal based on your recommendations or input custom",
-                            options=goal_options,
-                            index=0
-                        )
-                        
-                        if goal_choice == "Custom Goal...":
-                            learning_goal = st.text_input("Enter custom learning goal:", value="Learn Python Programming")
-                        else:
-                            if goal_choice.startswith("Learn "):
-                                learning_goal = goal_choice[6:]
-                            elif goal_choice.startswith("Master "):
-                                learning_goal = goal_choice[7:]
-                            else:
-                                learning_goal = goal_choice
-                            
-                        # Course outline state management in session state
-                        if "course_goal" not in st.session_state:
-                            st.session_state["course_goal"] = ""
-                        if "course_outline" not in st.session_state:
-                            st.session_state["course_outline"] = None
-                        if "course_weeks" not in st.session_state:
-                            st.session_state["course_weeks"] = {}
-                        if "course_days" not in st.session_state:
-                            st.session_state["course_days"] = {}
-                            
-                        # If the user switches goals, clear previous course state
-                        state_key = f"{learning_goal}"
-                        if st.session_state.get("course_state_key") != state_key:
-                            st.session_state["course_state_key"] = state_key
-                            st.session_state["course_outline"] = None
+                        learning_goal = goal_choice
+                    
+                # Course outline state management in session state
+                if "course_goal" not in st.session_state:
+                    st.session_state["course_goal"] = ""
+                if "course_outline" not in st.session_state:
+                    st.session_state["course_outline"] = None
+                if "course_weeks" not in st.session_state:
+                    st.session_state["course_weeks"] = {}
+                if "course_days" not in st.session_state:
+                    st.session_state["course_days"] = {}
+                    
+                # If user switches goals, clear previous course state
+                state_key = f"{learning_goal}"
+                if st.session_state.get("course_state_key") != state_key:
+                    st.session_state["course_state_key"] = state_key
+                    st.session_state["course_outline"] = None
+                    st.session_state["course_weeks"] = {}
+                    st.session_state["course_days"] = {}
+                    if "chat_messages" in st.session_state:
+                        del st.session_state["chat_messages"]
+                    
+                generate_course_btn = st.button("🚀 Generate Course Outline (Groq AI)")
+                
+                if generate_course_btn:
+                    with st.spinner("Generating structured weekly course outline using Groq API..."):
+                        try:
+                            outline = generate_course_outline(learning_goal)
+                            st.session_state["course_outline"] = outline
                             st.session_state["course_weeks"] = {}
                             st.session_state["course_days"] = {}
                             if "chat_messages" in st.session_state:
                                 del st.session_state["chat_messages"]
+                            st.success("Successfully generated course outline!")
+                            st.rerun()
+                        except Exception as gen_err:
+                            st.error(f"Failed to generate course outline: {str(gen_err)}")
                             
-                        generate_course_btn = st.button("Generate Course Outline")
+                outline = st.session_state["course_outline"]
+                if outline:
+                    st.markdown(f"### 📖 Course: {outline.get('title', learning_goal)}")
+                    st.write(outline.get("description", ""))
+                    
+                    prereqs = outline.get("prerequisites", [])
+                    if prereqs:
+                        st.markdown("**📋 Prerequisites & Basics:**")
+                        prereqs_badges = "".join([f'<span class="badge badge-normal" style="margin-right: 5px;">{p}</span>' for p in prereqs])
+                        st.markdown(f'<div>{prereqs_badges}</div><br>', unsafe_allow_html=True)
+                            
+                    st.markdown("---")
+                    st.markdown("### 📅 Weekly Syllabus")
+                    
+                    weeks = outline.get("weeks", [])
+                    for w in weeks:
+                        w_num = w.get("week")
+                        w_title = w.get("title", f"Week {w_num}")
+                        w_concepts = w.get("concepts", [])
+                        w_focus = w.get("focus", "theory")
                         
-                        if generate_course_btn:
-                            with st.spinner("Generating weekly course outline using Groq API..."):
-                                try:
-                                    outline = generate_course_outline(learning_goal)
-                                    st.session_state["course_outline"] = outline
-                                    st.session_state["course_weeks"] = {}
-                                    st.session_state["course_days"] = {}
-                                    if "chat_messages" in st.session_state:
-                                        del st.session_state["chat_messages"]
-                                    st.success("Successfully generated course outline!")
-                                    st.rerun()
-                                except Exception as gen_err:
-                                    st.error(f"Failed to generate course outline: {str(gen_err)}")
-                                    
-                        outline = st.session_state["course_outline"]
-                        if outline:
-                            st.markdown(f"### 📖 Course: {outline.get('title', learning_goal)}")
-                            st.write(outline.get("description", ""))
-                            
-                            prereqs = outline.get("prerequisites", [])
-                            if prereqs:
-                                st.markdown("**📋 Prerequisites & Basics:**")
-                                prereqs_badges = "".join([f'<span class="badge badge-normal" style="margin-right: 5px;">{p}</span>' for p in prereqs])
-                                st.markdown(f'<div>{prereqs_badges}</div><br>', unsafe_allow_html=True)
-                                    
-                            st.markdown("---")
-                            st.markdown("### 📅 Weekly Syllabus")
-                            
-                            weeks = outline.get("weeks", [])
-                            for w in weeks:
-                                w_num = w.get("week")
-                                w_title = w.get("title", f"Week {w_num}")
-                                w_concepts = w.get("concepts", [])
-                                w_focus = w.get("focus", "theory")
+                        week_key = f"w_{w_num}"
+                        
+                        with st.expander(f"Week {w_num}: {w_title} ({w_focus.capitalize()})"):
+                            if w_concepts:
+                                st.write("**Core Concepts:**")
+                                badges = "".join([f'<span class="concept-tag" style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; font-size: 0.8rem; margin: 3px; border: 1px solid rgba(99, 102, 241, 0.2);">{c}</span>' for c in w_concepts])
+                                st.markdown(f'<div>{badges}</div><br>', unsafe_allow_html=True)
                                 
-                                week_key = f"w_{w_num}"
-                                
-                                with st.expander(f"Week {w_num}: {w_title} ({w_focus.capitalize()})"):
-                                    if w_concepts:
-                                        st.write("**Core Concepts:**")
-                                        badges = "".join([f'<span class="concept-tag" style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; font-size: 0.8rem; margin: 3px; border: 1px solid rgba(99, 102, 241, 0.2);">{c}</span>' for c in w_concepts])
-                                        st.markdown(f'<div>{badges}</div><br>', unsafe_allow_html=True)
+                            # Check if days breakdown for this week is loaded
+                            week_details = st.session_state["course_weeks"].get(week_key)
+                            
+                            if not week_details:
+                                load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
+                                if load_week_btn:
+                                    with st.spinner(f"Generating daily tasks for Week {w_num} using Groq..."):
+                                        try:
+                                            w_data = generate_week_details(
+                                                learning_goal, w_num, w_title, w_concepts
+                                            )
+                                            st.session_state["course_weeks"][week_key] = w_data
+                                            st.rerun()
+                                        except Exception as w_err:
+                                            st.error(f"Failed to load week details: {str(w_err)}")
+                            else:
+                                days = week_details.get("days", [])
+                                st.write("**Daily Schedule:**")
+                                for d in days:
+                                    d_num = d.get("day")
+                                    d_title = d.get("title", f"Day {d_num}")
+                                    d_type = d.get("task_type", "theory")
+                                    d_duration = d.get("duration_minutes", 60)
+                                    d_concepts = d.get("concepts", [])
+                                    
+                                    day_key = f"d_{w_num}_{d_num}"
+                                    
+                                    st.markdown(f"**Day {d_num}: {d_title}**")
+                                    st.caption(f"⏱ {d_duration} mins | 🏷 Type: {d_type.capitalize()}")
+                                    if d_concepts:
+                                        st.write("Concepts: " + ", ".join(d_concepts))
                                         
-                                    # Check if days breakdown for this week is loaded
-                                    week_details = st.session_state["course_weeks"].get(week_key)
-                                    
-                                    if not week_details:
-                                        load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
-                                        if load_week_btn:
-                                            with st.spinner(f"Generating daily tasks for Week {w_num} using Groq..."):
+                                    # Lazy load day content
+                                    day_content = st.session_state["course_days"].get(day_key)
+                                    if not day_content:
+                                        load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
+                                        if load_day_btn:
+                                            with st.spinner(f"Generating details via Groq & searching resources via Tavily..."):
                                                 try:
-                                                    w_data = generate_week_details(
-                                                        learning_goal, w_num, w_title, w_concepts
+                                                    d_data = generate_day_details(
+                                                        learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration
                                                     )
-                                                    st.session_state["course_weeks"][week_key] = w_data
+                                                    st.session_state["course_days"][day_key] = d_data
                                                     st.rerun()
-                                                except Exception as w_err:
-                                                    st.error(f"Failed to load week details: {str(w_err)}")
+                                                except Exception as d_err:
+                                                    st.error(f"Failed to load day content: {str(d_err)}")
                                     else:
-                                        days = week_details.get("days", [])
-                                        st.write("**Daily Schedule:**")
-                                        for d in days:
-                                            d_num = d.get("day")
-                                            d_title = d.get("title", f"Day {d_num}")
-                                            d_type = d.get("task_type", "theory")
-                                            d_duration = d.get("duration_minutes", 60)
-                                            d_concepts = d.get("concepts", [])
-                                            
-                                            day_key = f"d_{w_num}_{d_num}"
-                                            
-                                            st.markdown(f"**Day {d_num}: {d_title}**")
-                                            st.caption(f"⏱ {d_duration} mins | 🏷 Type: {d_type.capitalize()}")
-                                            if d_concepts:
-                                                st.write("Concepts: " + ", ".join(d_concepts))
+                                        st.markdown(f"**Explanation:**\n{day_content.get('description', '')}")
+                                        
+                                        toc = day_content.get("table_of_contents", [])
+                                        if toc:
+                                            st.write("**Topics Covered:**")
+                                            for item in toc:
+                                                st.markdown(f"- {item}")
                                                 
-                                            # Lazy load day content
-                                            day_content = st.session_state["course_days"].get(day_key)
-                                            if not day_content:
-                                                load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
-                                                if load_day_btn:
-                                                    with st.spinner(f"Generating details via Groq & searching resources via Tavily..."):
-                                                        try:
-                                                            d_data = generate_day_details(
-                                                                learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration
-                                                            )
-                                                            st.session_state["course_days"][day_key] = d_data
-                                                            st.rerun()
-                                                        except Exception as d_err:
-                                                            st.error(f"Failed to load day content: {str(d_err)}")
-                                            else:
-                                                st.markdown(f"**Explanation:**\n{day_content.get('description', '')}")
+                                        # Resources rendering
+                                        resources = day_content.get("resources", [])
+                                        if resources:
+                                            st.write("**🔎 Recommended Resources & Tutorials (via Tavily):**")
+                                            for res in resources:
+                                                res_title = res.get("title", "Resource")
+                                                res_url = res.get("url", "#")
+                                                res_source = res.get("source", "web")
+                                                res_desc = res.get("description", "")
                                                 
-                                                toc = day_content.get("table_of_contents", [])
-                                                if toc:
-                                                    st.write("**Topics Covered:**")
-                                                    for item in toc:
-                                                        st.markdown(f"- {item}")
-                                                        
-                                                # Resources rendering
-                                                resources = day_content.get("resources", [])
-                                                if resources:
-                                                    st.write("**🔎 Recommended Resources & Tutorials (via Tavily):**")
-                                                    for res in resources:
-                                                        res_title = res.get("title", "Resource")
-                                                        res_url = res.get("url", "#")
-                                                        res_source = res.get("source", "web")
-                                                        res_desc = res.get("description", "")
-                                                        
-                                                        if res_source == "youtube":
-                                                            icon = "🎥 [YouTube Tutorial]"
-                                                        elif res_source == "research_paper":
-                                                            icon = "🎓 [Research Paper]"
-                                                        else:
-                                                            icon = "📖 [Official Documentation]"
-                                                            
-                                                        st.markdown(f"- **{icon} [{res_title}]({res_url})**")
-                                                        if res_desc:
-                                                            st.markdown(f"  *{res_desc}*")
-                                                            
-                                            st.markdown("---")
-                                            
-                            # ─── Chatbot Section ───────────────────
-                            st.markdown("---")
-                            st.markdown("### 💬 Course Chatbot Assistant (Ollama)")
-                            st.write(f"Ask the chatbot questions about the **{outline.get('title')}** course. Responses are processed locally using `{selected_model}`.")
+                                                if res_source == "youtube":
+                                                    icon = "🎥 [YouTube Tutorial]"
+                                                elif res_source == "research_paper":
+                                                    icon = "🎓 [Research Paper]"
+                                                else:
+                                                    icon = "📖 [Official Documentation]"
+                                                    
+                                                st.markdown(f"- **{icon} [{res_title}]({res_url})**")
+                                                if res_desc:
+                                                    st.markdown(f"  *{res_desc}*")
+                                                    
+                                    st.markdown("---")
+                                    
+                    # ─── Chatbot Section ───────────────────
+                    st.markdown("---")
+                    st.markdown("### 💬 Course Chatbot Assistant (Ollama)")
+                    if not ollama_connected:
+                        st.info("ℹ️ *Note: Local Ollama AI Chatbot is currently offline. Start Ollama (`ollama serve`) locally on port 11434 to chat interactively with your course assistant.*")
+                    else:
+                        st.success("✅ Local Ollama Server Connected")
+                        @st.cache_data(ttl=60)
+                        def get_cached_models():
+                            try:
+                                return list_models()
+                            except Exception:
+                                return []
+
+                        local_models = get_cached_models()
+                        model_names = [m["name"] for m in local_models] if local_models else []
+                        
+                        if not model_names:
+                            st.warning("⚠️ No local Ollama models found. Run `ollama pull deepseek-r1:1.5b` to enable local chat.")
+                        else:
+                            selected_model = st.selectbox(
+                                "Select Local Ollama Model (for Chatbot)",
+                                options=model_names,
+                                index=0
+                            )
+                            st.write(f"Ask questions about the **{outline.get('title')}** course using `{selected_model}`.")
                             
-                            # Initialize chatbot message history
                             if "chat_messages" not in st.session_state:
                                 st.session_state["chat_messages"] = []
                                 
-                            # Display messages
                             for msg in st.session_state["chat_messages"]:
                                 with st.chat_message(msg["role"]):
                                     st.markdown(msg["content"])
                                     
-                            # Input
                             if user_chat_input := st.chat_input("Type your question here..."):
-                                # Render user message
                                 with st.chat_message("user"):
                                     st.markdown(user_chat_input)
                                 st.session_state["chat_messages"].append({"role": "user", "content": user_chat_input})
                                 
-                                # Send query to Ollama
                                 with st.spinner("AI Tutor is thinking..."):
                                     try:
                                         chat_payload = [
-                                            {"role": "system", "content": "You are a professional educational tutor. Provide helpful and deep explanations to students based on their course details."},
-                                            {"role": "system", "content": f"The student is taking a course titled '{outline.get('title')}' with goal '{learning_goal}'. Description: '{outline.get('description')}'."},
+                                            {"role": "system", "content": "You are a professional educational tutor."},
+                                            {"role": "system", "content": f"Course: '{outline.get('title')}' Goal: '{learning_goal}'."},
                                         ]
-                                        # Append last 8 messages
                                         for msg in st.session_state["chat_messages"][-8:]:
                                             chat_payload.append({"role": msg["role"], "content": msg["content"]})
                                             
                                         assistant_response = call_ollama_chat(selected_model, chat_payload)
                                         
-                                        # Render response
                                         with st.chat_message("assistant"):
                                             st.markdown(assistant_response)
                                         st.session_state["chat_messages"].append({"role": "assistant", "content": assistant_response})

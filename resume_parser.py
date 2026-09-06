@@ -78,26 +78,83 @@ Rules:
     except Exception:
         return {"required_skills": []}
 
+import re
+
+# -----------------------------
+# Common Technical Skills Dictionary for Fallback Extraction
+# -----------------------------
+COMMON_TECH_SKILLS = [
+    "Python", "Java", "C++", "C#", "C", "R", "Go", "Golang", "Rust", "Swift", "Kotlin", "PHP", "Ruby", "Scala",
+    "HTML", "HTML5", "CSS", "CSS3", "JavaScript", "TypeScript", "React", "React.js", "Angular", "Vue", "Vue.js", "Next.js", "Node.js", "Express", "Bootstrap", "Tailwind", "Sass", "jQuery",
+    "SQL", "MySQL", "PostgreSQL", "MongoDB", "SQLite", "Oracle", "Redis", "Cassandra", "DynamoDB", "Firebase",
+    "Django", "Flask", "FastAPI", "Spring Boot", ".NET", "Laravel",
+    "Docker", "Kubernetes", "AWS", "Azure", "GCP", "DevOps", "Terraform", "Ansible", "CI/CD", "Jenkins", "Git", "GitHub", "GitLab", "Linux", "Bash", "Shell",
+    "Machine Learning", "Deep Learning", "Artificial Intelligence", "NLP", "Natural Language Processing", "Computer Vision", "TensorFlow", "PyTorch", "Keras", "Scikit-Learn", "Pandas", "NumPy", "Matplotlib", "Seaborn", "OpenCV", "Power BI", "Tableau", "Excel",
+    "Data Structures", "Algorithms", "DSA", "System Design", "OOP", "REST API", "GraphQL", "Microservices",
+    "Figma", "UI/UX", "Wireframing", "Prototyping", "Agile", "Scrum", "Jira", "PyTest", "Selenium"
+]
+
+def extract_skills_fallback(resume_text, ref_skills_list=None):
+    """Fallback skill extractor using regex keyword matching if LLM API is unavailable."""
+    if not resume_text:
+        return []
+    skills_found = set()
+    all_target_skills = list(set(COMMON_TECH_SKILLS + (ref_skills_list or [])))
+    
+    for skill in all_target_skills:
+        # Match skill using regex boundaries to prevent partial word mismatches
+        escaped_skill = re.escape(skill)
+        pattern = r'(?<![A-Za-z0-9])' + escaped_skill + r'(?![A-Za-z0-9])'
+        if re.search(pattern, resume_text, re.IGNORECASE):
+            skills_found.add(skill)
+            
+    return sorted(list(skills_found))
+
 # -----------------------------
 # Extract text from PDF
 # -----------------------------
 def extract_pdf_text(uploaded_file):
     text = ""
-    with pdfplumber.open(uploaded_file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+    try:
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as e:
+        print(f"pdfplumber extraction error: {e}")
+        
+    # If pdfplumber returned empty text, try pypdf as fallback
+    if not text.strip():
+        try:
+            import pypdf
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+            reader = pypdf.PdfReader(uploaded_file)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        except Exception as e:
+            print(f"pypdf extraction error: {e}")
+
     return text
 
 # -----------------------------
 # Extract text from DOCX
 # -----------------------------
 def extract_docx_text(uploaded_file):
-    document = docx.Document(uploaded_file)
     text = ""
-    for para in document.paragraphs:
-        text += para.text + "\n"
+    try:
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
+        document = docx.Document(uploaded_file)
+        for para in document.paragraphs:
+            text += para.text + "\n"
+    except Exception as e:
+        print(f"docx extraction error: {e}")
     return text
 
 # -----------------------------
@@ -131,10 +188,14 @@ def analyze_resume_profile(uploaded_file):
     for role, data in db.items():
         for skill in data.get("required_skills", []):
             all_ref_skills.add(skill)
-    ref_skills_str = ", ".join(sorted(list(all_ref_skills))) if all_ref_skills else "Python, SQL, Java, React, HTML, CSS"
+    ref_skills_list = list(all_ref_skills)
+    ref_skills_str = ", ".join(sorted(ref_skills_list)) if ref_skills_list else "Python, SQL, Java, React, HTML, CSS"
 
-    # 3. Call AI to extract technical skills from resume text
-    prompt = f"""
+    skills = []
+
+    # 3. Call Groq AI to extract technical skills from resume text
+    if resume_text.strip():
+        prompt = f"""
 You are an expert ATS Resume Analyzer.
 
 Extract ONLY technical skills from the resume.
@@ -164,22 +225,28 @@ Resume:
 {resume_text}
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
-        result = json.loads(response.choices[0].message.content)
-        skills = result.get("skills", [])
-    except Exception:
-        skills = []
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                response_format={"type": "json_object"}
+            )
+            result = json.loads(response.choices[0].message.content)
+            skills = result.get("skills", [])
+        except Exception as e:
+            print(f"Groq API skill extraction error: {e}")
+            skills = []
+
+    # 4. Fallback to Regex keyword extraction if Groq API produced no skills or failed
+    if not skills and resume_text.strip():
+        skills = extract_skills_fallback(resume_text, ref_skills_list)
 
     return {
         "skills": skills,
         "resume_text": resume_text
     }
+
 
 
 def suggest_new_role_ai(resume_text, resume_skills):

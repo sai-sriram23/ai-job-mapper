@@ -339,80 +339,166 @@ def parse_json_response(text):
 
 
 # ─── Synchronous Course Generation Logic (via Groq) ───────────
+# ─── Synchronous Course Generation Logic (via Groq) ───────────
 def generate_course_outline(goal: str) -> dict:
-    """Generate the weekly course outline using Groq."""
-    prompt = OUTLINE_PROMPT_TEMPLATE.format(goal=goal)
-    raw = call_groq(prompt)
-    data = parse_json_response(raw)
+    """Generate the weekly course outline using Groq API with fallback safety."""
+    try:
+        prompt = OUTLINE_PROMPT_TEMPLATE.format(goal=goal)
+        raw = call_groq(prompt)
+        data = parse_json_response(raw)
 
-    if "prerequisites" not in data:
-        data["prerequisites"] = []
-    if "weeks" not in data:
-        data["weeks"] = []
+        if "prerequisites" not in data:
+            data["prerequisites"] = []
+        if "weeks" not in data:
+            data["weeks"] = []
 
-    for w in data["weeks"]:
-        if "concepts" not in w:
-            w["concepts"] = []
-        if "focus" not in w:
-            w["focus"] = "theory"
+        for w in data["weeks"]:
+            if "concepts" not in w:
+                w["concepts"] = []
+            if "focus" not in w:
+                w["focus"] = "theory"
 
-    data["duration_weeks"] = len(data["weeks"])
-    return data
+        data["duration_weeks"] = len(data["weeks"])
+        return data
+    except Exception as e:
+        logger.error(f"Groq course outline generation failed: {e}")
+        # Fallback Course Outline Structure
+        return {
+            "title": f"Mastery Path: {goal}",
+            "description": f"A structured curriculum designed to build end-to-end expertise in {goal}.",
+            "prerequisites": ["Computer Science Fundamentals", "Basic Logic & Problem Solving"],
+            "weeks": [
+                {
+                    "week": 1,
+                    "title": f"Core Foundations of {goal}",
+                    "concepts": [f"Introduction to {goal}", "Core Principles", "Environment Setup"],
+                    "focus": "theory"
+                },
+                {
+                    "week": 2,
+                    "title": f"Intermediate Concepts & Applied Tools",
+                    "concepts": ["Data Structures", "Essential Libraries", "Error Handling & Debugging"],
+                    "focus": "practice"
+                },
+                {
+                    "week": 3,
+                    "title": "Advanced Architecture & Best Practices",
+                    "concepts": ["Design Patterns", "Performance Optimization", "Security Fundamentals"],
+                    "focus": "practice"
+                },
+                {
+                    "week": 4,
+                    "title": "Capstone Project & Production Deployment",
+                    "concepts": ["Real-World Application Build", "Testing & QA", "CI/CD Pipeline"],
+                    "focus": "project"
+                }
+            ],
+            "duration_weeks": 4
+        }
 
 
 def generate_week_details(goal: str, week_number: int, week_title: str, concepts: list[str]) -> dict:
-    """Generate daily breakdown for a specific week using Groq."""
-    concepts_str = ", ".join(concepts) if concepts else week_title
-    prompt = WEEK_DETAILS_PROMPT_TEMPLATE.format(
-        goal=goal,
-        week_number=week_number,
-        week_title=week_title,
-        concepts=concepts_str
-    )
-    raw = call_groq(prompt)
-    data = parse_json_response(raw)
+    """Generate daily breakdown for a specific week using Groq with fallback."""
+    try:
+        concepts_str = ", ".join(concepts) if concepts else week_title
+        prompt = WEEK_DETAILS_PROMPT_TEMPLATE.format(
+            goal=goal,
+            week_number=week_number,
+            week_title=week_title,
+            concepts=concepts_str
+        )
+        raw = call_groq(prompt)
+        data = parse_json_response(raw)
 
-    if "days" not in data:
-        data["days"] = []
+        if "days" not in data:
+            data["days"] = []
 
-    for day in data["days"]:
-        if "concepts" not in day:
-            day["concepts"] = []
-        day["is_generated"] = True
+        for day in data["days"]:
+            if "concepts" not in day:
+                day["concepts"] = []
+            day["is_generated"] = True
 
-    return data
+        return data
+    except Exception as e:
+        logger.error(f"Groq week details generation failed: {e}")
+        c_list = concepts if concepts else [f"{week_title} Overview", f"{week_title} Deep Dive"]
+        return {
+            "days": [
+                {
+                    "day": 1,
+                    "title": f"Introduction to {week_title}",
+                    "task_type": "theory",
+                    "duration_minutes": 60,
+                    "concepts": [c_list[0] if c_list else week_title],
+                    "is_generated": True
+                },
+                {
+                    "day": 2,
+                    "title": f"Hands-on Implementation of {week_title}",
+                    "task_type": "practice",
+                    "duration_minutes": 90,
+                    "concepts": [c_list[1] if len(c_list) > 1 else week_title],
+                    "is_generated": True
+                },
+                {
+                    "day": 3,
+                    "title": f"Review & Practical Exercises",
+                    "task_type": "practice",
+                    "duration_minutes": 60,
+                    "concepts": [f"{week_title} Best Practices"],
+                    "is_generated": True
+                }
+            ]
+        }
 
 
 def generate_day_details(goal: str, day_title: str, day_number: int, task_type: str, duration_minutes: int) -> dict:
-    """Generate details for a specific day using Groq and search resources using Tavily."""
-    prompt = DAY_DETAILS_PROMPT_TEMPLATE.format(
-        goal=goal,
-        day_title=day_title,
-        day_number=day_number,
-        task_type=task_type,
-        duration_minutes=duration_minutes
-    )
-    raw = call_groq(prompt)
-    data = parse_json_response(raw)
+    """Generate details for a specific day using Groq and search resources using Tavily with fallback."""
+    try:
+        prompt = DAY_DETAILS_PROMPT_TEMPLATE.format(
+            goal=goal,
+            day_title=day_title,
+            day_number=day_number,
+            task_type=task_type,
+            duration_minutes=duration_minutes
+        )
+        raw = call_groq(prompt)
+        data = parse_json_response(raw)
+    except Exception as e:
+        logger.error(f"Groq day details generation failed: {e}")
+        data = {
+            "title": day_title,
+            "description": f"Comprehensive educational breakdown covering {day_title} in {goal}.",
+            "table_of_contents": [f"Overview of {day_title}", "Key Technical Concepts", "Practical Implementation"],
+            "resources": [
+                {"title": f"{day_title} Complete Tutorial", "source": "youtube"},
+                {"title": f"Official Documentation for {day_title}", "source": "documentation"}
+            ]
+        }
 
     # Enrich resources using Tavily API
     if "resources" in data:
         final_resources = []
         for r in data["resources"][:4]:
             q = r.get("title", day_title)
-            if r.get("source") == "youtube":
-                res = search_youtube_tavily(q)
-                if res:
-                    final_resources.extend(res)
-            elif r.get("source") == "research_paper":
-                res = search_research_papers_tavily(q)
-                if res:
-                    final_resources.extend(res)
-            else:
-                res = search_documentation_tavily(q)
-                if res:
-                    final_resources.extend(res)
+            try:
+                if r.get("source") == "youtube":
+                    res = search_youtube_tavily(q)
+                    if res:
+                        final_resources.extend(res)
+                elif r.get("source") == "research_paper":
+                    res = search_research_papers_tavily(q)
+                    if res:
+                        final_resources.extend(res)
+                else:
+                    res = search_documentation_tavily(q)
+                    if res:
+                        final_resources.extend(res)
+            except Exception as search_err:
+                logger.error(f"Resource search error: {search_err}")
 
-        data["resources"] = final_resources
+        if final_resources:
+            data["resources"] = final_resources
 
     return data
+
