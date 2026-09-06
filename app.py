@@ -39,11 +39,25 @@ st.set_page_config(
 # Load machine learning model assets
 @st.cache_resource
 def load_ml_assets():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_joblib = os.path.join(base_dir, "profile_model.joblib")
+    model_pkl = os.path.join(base_dir, "profile_model.pkl")
+    encoders_pkl = os.path.join(base_dir, "profile_encoders.pkl")
+    
+    model = None
+    encoders = None
+    
     try:
-        with open("profile_model.pkl", "rb") as f:
-            model = pickle.load(f)
-        with open("profile_encoders.pkl", "rb") as f:
-            encoders = pickle.load(f)
+        if os.path.exists(model_joblib):
+            model = joblib.load(model_joblib)
+        elif os.path.exists(model_pkl):
+            with open(model_pkl, "rb") as f:
+                model = pickle.load(f)
+                
+        if os.path.exists(encoders_pkl):
+            with open(encoders_pkl, "rb") as f:
+                encoders = pickle.load(f)
+                
         return model, encoders
     except Exception as e:
         st.error(f"Error loading Profile ML model/encoders: {str(e)}")
@@ -51,10 +65,11 @@ def load_ml_assets():
 
 @st.cache_resource
 def load_skill_ml_assets():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     try:
-        model = joblib.load("job_role_model.pkl")
-        tfidf = joblib.load("tfidf.pkl")
-        encoder = joblib.load("label_encoder.pkl")
+        model = joblib.load(os.path.join(base_dir, "job_role_model.pkl"))
+        tfidf = joblib.load(os.path.join(base_dir, "tfidf.pkl"))
+        encoder = joblib.load(os.path.join(base_dir, "label_encoder.pkl"))
         return model, tfidf, encoder
     except Exception as e:
         st.error(f"Error loading Skill ML assets (job_role_model.pkl, label_encoder.pkl, tfidf.pkl): {str(e)}")
