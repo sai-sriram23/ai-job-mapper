@@ -17,6 +17,12 @@ from course_generator import (
     generate_day_details,
     call_ollama_chat
 )
+from career_accelerator import (
+    generate_ats_resume_bullets,
+    generate_mock_interview_questions,
+    evaluate_interview_answer
+)
+
 
 
 # Ensure environment variables are loaded
@@ -311,6 +317,34 @@ with st.sidebar:
         st.error("❌ Career Path Recommender (job_role_model.pkl): Offline")
     st.success("✅ AI Fallback Suggestion: Enabled")
     
+    st.markdown("---")
+    st.markdown("### 🔑 Multi-Key API Pool")
+    from api_key_manager import get_groq_keys, get_tavily_keys
+    
+    groq_cnt = len(get_groq_keys())
+    tavily_cnt = len(get_tavily_keys())
+    
+    st.caption(f"⚡ Groq Key Pool: **{groq_cnt} Active** | 🌐 Tavily Key Pool: **{tavily_cnt} Active**")
+    
+    with st.expander("➕ Manage / Add Backup API Keys"):
+        custom_groq = st.text_area(
+            "Groq API Keys (comma/newline separated)",
+            value=st.session_state.get("custom_groq_keys", ""),
+            placeholder="gsk_key1, gsk_key2...",
+            key="custom_groq_input",
+            help="Enter extra Groq keys to rotate through if rate limited (429) or quota bounds are reached."
+        )
+        st.session_state["custom_groq_keys"] = custom_groq
+        
+        custom_tavily = st.text_area(
+            "Tavily API Keys (comma/newline separated)",
+            value=st.session_state.get("custom_tavily_keys", ""),
+            placeholder="tvly-key1, tvly-key2...",
+            key="custom_tavily_input",
+            help="Enter extra Tavily keys for search failover."
+        )
+        st.session_state["custom_tavily_keys"] = custom_tavily
+
     st.markdown("---")
     if st.button("🔄 Clear App Cache"):
         st.cache_data.clear()
@@ -713,13 +747,15 @@ with col2:
             """, unsafe_allow_html=True)
             
         with col_m2:
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
                 "✨ Skills Gap Analysis", 
                 "📋 Required Role Skills", 
                 "📝 Your Extracted/Entered Skills",
                 "📈 Real-Time Market Insights (Tavily)",
                 "💼 Apply to Jobs/Internships",
-                "📚 Course Generator (Ollama)"
+                "📚 Course Generator (Ollama)",
+                "⚡ ATS Resume Tailorer (STAR)",
+                "🎙️ AI Mock Interview Simulator"
             ])
             
             with tab1:
@@ -1127,6 +1163,142 @@ with col2:
                                         st.rerun()
                                     except Exception as chat_err:
                                         st.error(f"Chatbot failed: {str(chat_err)}")
+
+            with tab7:
+                st.write(f"### ⚡ ATS Resume Bullet Optimizer for **{selected_role}**")
+                st.write("Transform your skill gaps into ATS-optimized, high-impact **STAR-method** (Situation, Task, Action, Result) resume bullet points with quantified metrics:")
+                
+                bullet_key = f"ats_bullets_{selected_role}"
+                if bullet_key not in st.session_state:
+                    st.session_state[bullet_key] = None
+                    
+                if st.button("✨ Generate Tailored Resume Bullets & Summary", key=f"btn_gen_bullets_{selected_role}"):
+                    with st.spinner("Generating ATS resume bullets using Groq AI..."):
+                        try:
+                            res_data = generate_ats_resume_bullets(selected_role, matched, missing, combined_skills)
+                            st.session_state[bullet_key] = res_data
+                            st.success("Successfully generated ATS bullet points!")
+                        except Exception as bul_err:
+                            st.error(f"Failed to generate ATS resume bullets: {str(bul_err)}")
+                            
+                bullets_data = st.session_state.get(bullet_key)
+                if bullets_data:
+                    st.markdown("#### 📝 Tailored Executive Summary (for top of resume)")
+                    st.info(bullets_data.get("professional_summary", "N/A"))
+                    
+                    st.markdown("#### 🚀 STAR-Formatted Experience Bullets")
+                    bullets_list = bullets_data.get("bullet_points", [])
+                    raw_bullets_text = []
+                    for idx, bp in enumerate(bullets_list, 1):
+                        skill_tag = bp.get("skill_targeted", "Skill")
+                        star_txt = bp.get("star_bullet", "")
+                        keywords = bp.get("ats_keywords", [])
+                        raw_bullets_text.append(f"• {star_txt}")
+                        
+                        kw_badges = "".join([f'<span class="badge badge-normal" style="font-size:0.7rem; padding:2px 6px; margin-right:4px;">{k}</span>' for k in keywords])
+                        st.markdown(f"""
+                        <div class="glass-card" style="padding: 15px; margin-bottom: 12px; border-left: 3px solid #34d399;">
+                            <div style="font-size: 0.8rem; color: #a5b4fc; font-weight: 700; margin-bottom: 4px;">TARGETING: {skill_tag.upper()}</div>
+                            <p style="font-size: 0.95rem; color: #f3f4f6; margin-bottom: 8px;"><strong>• {star_txt}</strong></p>
+                            <div>{kw_badges}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    st.markdown("#### 📋 Copy-Paste Ready Resume Bullets")
+                    st.code("\n".join(raw_bullets_text), language="text")
+                    
+                    st.markdown("#### 💡 ATS Strategy & Formatting Tips")
+                    tips = bullets_data.get("ats_optimization_tips", [])
+                    for tip in tips:
+                        st.markdown(f"- {tip}")
+                        
+            with tab8:
+                st.write(f"### 🎙️ AI Interactive Mock Interview Simulator for **{selected_role}**")
+                st.write("Practice real technical, system design, and behavioral questions targeted at your missing skills. Submit your answers for instant AI grading and feedback.")
+                
+                q_key = f"mock_qs_{selected_role}"
+                eval_key = f"mock_eval_{selected_role}"
+                
+                if q_key not in st.session_state:
+                    st.session_state[q_key] = None
+                if eval_key not in st.session_state:
+                    st.session_state[eval_key] = None
+                    
+                if st.button("🎲 Generate Practice Interview Questions", key=f"btn_gen_qs_{selected_role}"):
+                    with st.spinner("Generating tailored interview questions via Groq AI..."):
+                        try:
+                            qs_data = generate_mock_interview_questions(selected_role, matched, missing)
+                            st.session_state[q_key] = qs_data
+                            st.session_state[eval_key] = None
+                            st.success("Generated interview questions!")
+                        except Exception as q_err:
+                            st.error(f"Failed to generate questions: {str(q_err)}")
+                            
+                questions_data = st.session_state.get(q_key)
+                if questions_data and questions_data.get("questions"):
+                    qs_list = questions_data["questions"]
+                    
+                    q_options = [f"Q{q['id']}: [{q['category']}] ({q['difficulty']})" for q in qs_list]
+                    selected_q_label = st.selectbox("Select Question to Practice:", options=q_options)
+                    
+                    q_index = q_options.index(selected_q_label)
+                    active_q = qs_list[q_index]
+                    
+                    st.markdown(f"""
+                    <div class="glass-card" style="padding: 20px; border-color: rgba(99, 102, 241, 0.4); margin-bottom: 15px;">
+                        <span style="font-size: 0.8rem; background: rgba(99, 102, 241, 0.2); color: #818cf8; padding: 3px 8px; border-radius: 4px; font-weight: 700;">{active_q.get('category', 'Technical')} • {active_q.get('difficulty', 'Medium')}</span>
+                        <h4 style="margin: 12px 0 8px 0; color: #f3f4f6 !important;">{active_q.get('question')}</h4>
+                        <p style="font-size: 0.82rem; color: #9ca3af; margin-bottom: 0;">Expected concepts to cover: <strong>{", ".join(active_q.get('key_concepts_expected', []))}</strong></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    user_answer_text = st.text_area("Your Response / Answer:", height=150, placeholder="Type your detailed answer here... Use STAR method if applicable.", key=f"ta_ans_{selected_role}_{q_index}")
+                    
+                    if st.button("🧠 Evaluate My Answer", key=f"btn_eval_{selected_role}_{q_index}"):
+                        if not user_answer_text.strip():
+                            st.warning("Please enter your answer before evaluating.")
+                        else:
+                            with st.spinner("AI Interviewer is evaluating your response..."):
+                                try:
+                                    eval_result = evaluate_interview_answer(
+                                        selected_role,
+                                        active_q.get('question'),
+                                        active_q.get('key_concepts_expected', []),
+                                        user_answer_text
+                                    )
+                                    st.session_state[eval_key] = eval_result
+                                except Exception as eval_err:
+                                    st.error(f"Evaluation failed: {str(eval_err)}")
+                                    
+                    eval_data = st.session_state.get(eval_key)
+                    if eval_data:
+                        score = eval_data.get("score", 70)
+                        rating = eval_data.get("rating", "Good Effort")
+                        
+                        score_color = "#10b981" if score >= 80 else "#f59e0b" if score >= 60 else "#ef4444"
+                        
+                        st.markdown(f"""
+                        <div class="glass-card" style="padding: 20px; border-color: {score_color}; margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h4 style="margin: 0; color: {score_color} !important;">Score: {score}/100 — {rating}</h4>
+                            </div>
+                            <p style="margin: 8px 0; color: #e5e7eb;"><strong>Feedback:</strong> {eval_data.get('feedback_summary', '')}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        col_ev1, col_ev2 = st.columns(2)
+                        with col_ev1:
+                            st.markdown("#### ✅ Strengths in your response")
+                            for s in eval_data.get("strengths", []):
+                                st.markdown(f"- {s}")
+                        with col_ev2:
+                            st.markdown("#### 💡 Concepts to improve/add")
+                            for m in eval_data.get("missing_concepts", []):
+                                st.markdown(f"- {m}")
+                                
+                        st.markdown("#### 🌟 Model STAR Answer")
+                        st.success(eval_data.get("model_answer", "N/A"))
+
     else:
         # Default placeholder container with rich instructions
         st.markdown("""

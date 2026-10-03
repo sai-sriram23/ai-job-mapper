@@ -30,6 +30,14 @@ A state-of-the-art hybrid Machine Learning & LLM platform that predicts student 
 ### 6. 🎨 Glassmorphic Dark-Mode UI (`app.py`)
 * Built using **Streamlit** with custom CSS styling featuring glassmorphism cards, glowing ATS score gauges, interactive pill badges, and responsive multi-column layouts.
 
+### 7. ⚡ ATS Resume Bullet Optimizer (`career_accelerator.py`)
+* **STAR Bullet Generation**: Automatically turns candidate skill gaps into high-impact, ATS-optimized experience bullet points using the **STAR** framework (Situation, Task, Action, Result) with quantitative metrics.
+* **Resume Summary**: Generates a tailored 2-line executive summary targeting the selected role.
+
+### 8. 🎙️ AI Mock Interview Simulator (`career_accelerator.py`)
+* **Targeted Questions**: Generates 3 practice interview questions (Technical Deep Dive on missing skills, System Design/Practical Scenario, and Behavioral STAR).
+* **AI Evaluation Engine**: Evaluates candidate text responses in real-time, providing a 0–100 score, key strengths, missing concepts, and a model STAR answer.
+
 ---
 
 ## 💻 Tech Stack: Frontend & Backend Breakdown
@@ -188,13 +196,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment Variables (`.env`)
-Create a `.env` file in the root directory:
+### 3. Configure Multi-Key Environment Variables (`.env`)
+Create a `.env` file in the root directory. You can provide single keys, comma-separated key pools, or numbered keys (`GROQ_API_KEY_1`, `GROQ_API_KEY_2`):
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
-TAVILY_API_KEY=your_tavily_api_key_here
+# Multi-Key Rotation Pool (comma-separated or numbered env vars)
+GROQ_API_KEY=your_primary_groq_key,your_backup_groq_key
+TAVILY_API_KEY=your_primary_tavily_key,your_backup_tavily_key
 ```
+
+> 💡 *Note: The application automatically rotates through all configured keys if rate limits (429), quota limits, or auth errors occur. You can also add custom backup keys directly in the Streamlit UI sidebar!*
+
 
 ### 4. Run Locally
 ```bash

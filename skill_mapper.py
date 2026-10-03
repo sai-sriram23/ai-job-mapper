@@ -10,13 +10,8 @@ if os.path.exists(".env"):
                 key, val = line.strip().split("=", 1)
                 os.environ[key.strip()] = val.strip().strip('"\'')
 
-# ----------------------------
-# Configure Groq
-# ----------------------------
-client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY")
-)
-
+from api_key_manager import execute_groq_with_rotation
+from tavily_helper import parse_insights_json
 
 JSON_FILE = "role_skills.json"
 
@@ -73,20 +68,9 @@ Rules:
 - No markdown.
 - No extra text.
 """
+    raw_res = execute_groq_with_rotation(prompt, temperature=0, is_json=True, feature="skill")
+    return parse_insights_json(raw_res)
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0,
-        response_format={"type": "json_object"}
-    )
-
-    return json.loads(response.choices[0].message.content)
 
 # ----------------------------
 # Get Skills

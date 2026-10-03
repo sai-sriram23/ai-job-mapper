@@ -13,12 +13,8 @@ if os.path.exists(env_path):
                 key, val = line.strip().split("=", 1)
                 os.environ[key.strip()] = val.strip().strip('"\'')
 
-# -----------------------------
-# Configure Groq client
-# -----------------------------
-client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY")
-)
+from api_key_manager import execute_groq_with_rotation
+from tavily_helper import parse_insights_json
 
 JSON_FILE = "role_skills.json"
 
@@ -43,23 +39,15 @@ def save_skills_db(data):
 # -----------------------------
 # Fetch standard technical skills for a role via AI
 # -----------------------------
-def fetch_skills_for_role_ai(job_role):
+def _call_groq(prompt, temperature=0):
+    raw_res = execute_groq_with_rotation(prompt, temperature=temperature, is_json=True, feature="skill")
+    return parse_insights_json(raw_res)
+
+
+
+def get_skills_for_role(role_name):
     prompt = f"""
-You are an expert career advisor.
-
-For the job role:
-{job_role}
-
-Return ONLY valid JSON.
-
-Format:
-
-{{
-    "required_skills":[
-        "Skill1",
-        "Skill2"
-    ]
-}}
+Given the job role '{role_name}', return a JSON object with key 'required_skills' containing a list of standard technical skills essential for this role.
 
 Rules:
 - Return exactly 10 technical skills.
@@ -68,13 +56,7 @@ Rules:
 - No extra text.
 """
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
-        return json.loads(response.choices[0].message.content)
+        return _call_groq(prompt, temperature=0)
     except Exception:
         return {"required_skills": []}
 
@@ -226,13 +208,7 @@ Resume:
 """
 
         try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(response.choices[0].message.content)
+            result = _call_groq(prompt, temperature=0)
             skills = result.get("skills", [])
         except Exception as e:
             print(f"Groq API skill extraction error: {e}")
@@ -284,13 +260,7 @@ Resume Content:
 {resume_text}
 """
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        return json.loads(response.choices[0].message.content)
+        return _call_groq(prompt, temperature=0.1)
     except Exception:
         return {
             "suggested_role": "Software Engineer",

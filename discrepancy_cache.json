@@ -1,0 +1,54 @@
+[
+  {
+    "id": "disc_1",
+    "timestamp": "2026-09-12 14:01:26",
+    "skills": [
+      "Benefits Administration",
+      "Employee Engagement",
+      "Jenkins",
+      "Marketing",
+      "Recruitment"
+    ],
+    "branch": "CSE",
+    "cgpa": 8.0,
+    "coding_score": 75.0,
+    "ml_top_role": "DEVOPS MANAGER",
+    "ai_top_role": "Software Engineer",
+    "reasoning": "Grounded recommendation based on skill alignment with Benefits Administration, Employee Engagement, Jenkins, Marketing, Recruitment."
+  },
+  {
+    "id": "disc_2",
+    "timestamp": "2026-09-12 14:03:04",
+    "skills": [
+      "AWS",
+      "C",
+      "C++",
+      "CI/CD",
+      "Deep Learning",
+      "Docker",
+      "Git",
+      "GitHub",
+      "Kubernetes",
+      "Machine Learning",
+      "NLP",
+      "Natural Language Processing",
+      "NumPy",
+      "Pandas",
+      "PostgreSQL",
+      "PyTorch",
+      "Python",
+      "R",
+      "SQL",
+      "Scikit-Learn",
+      "Scikit-learn",
+      "Statistics",
+      "TensorFlow"
+    ],
+    "branch": "CSE",
+    "cgpa": 8.0,
+    "coding_score": 75.0,
+    "ml_top_role": "DATA SCIENTIST",
+    "ai_top_role": "Data Analyst / Data Engineer",
+    "reasoning": "Grounded recommendation based on skill alignment with AWS, C, C++, CI/CD, Deep Learning, Docker, Git, GitHub, Kubernetes, Machine Learning, NLP, Natural Language Processing, NumPy, Pandas, PostgreSQL, PyTorch, Python, R, SQL, Scikit-Learn, Scikit-learn, Statistics, TensorFlow."
+  }
+]

@@ -1,0 +1,345 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Hybrid Job Recommender & ATS Gap Analyzer</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Banner -->
+        <header class="header-banner">
+            <h1 class="main-title">🤖 AI Hybrid Job Recommendation System</h1>
+            <p class="subtitle">
+                Predicts Academic Placement Opportunities via Profile Classifier (profile_model.pkl) & Career Paths via Technical Skills Model (job_role_model.pkl)
+            </p>
+        </header>
+
+        <!-- Main Layout -->
+        <main class="main-layout">
+            <!-- Sidebar / Left Panel -->
+            <aside class="sidebar-col">
+                <div class="glass-card">
+                    <h3 class="card-title">👤 Academic Profile</h3>
+                    
+                    <form id="career_form">
+                        <div class="form-group">
+                            <label for="branch_select">Academic Branch / Major</label>
+                            <select id="branch_select" class="form-select">
+                                {% for branch in branch_options %}
+                                    <option value="{{ branch }}">{{ branch }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cgpa_input">CGPA: <span id="cgpa_val" class="slider-val">8.0</span></label>
+                                <div class="slider-container">
+                                    <input type="range" id="cgpa_input" min="5.0" max="10.0" step="0.1" value="8.0">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="college_tier_select">College Tier</label>
+                                <select id="college_tier_select" class="form-select">
+                                    <option value="1">Tier 1</option>
+                                    <option value="2" selected>Tier 2</option>
+                                    <option value="3">Tier 3</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="coding_score">Coding Score: <span id="coding_val" class="slider-val">75</span>/100</label>
+                            <div class="slider-container">
+                                <input type="range" id="coding_score" min="0" max="100" step="1" value="75">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="aptitude_score">Aptitude Score: <span id="aptitude_val" class="slider-val">75</span>/100</label>
+                            <div class="slider-container">
+                                <input type="range" id="aptitude_score" min="0" max="100" step="1" value="75">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="communication_score">Comm Rating: <span id="comm_val" class="slider-val">8</span>/10</label>
+                            <div class="slider-container">
+                                <input type="range" id="communication_score" min="0" max="10" step="1" value="8">
+                            </div>
+                        </div>
+
+                        <div class="form-row-3">
+                            <div class="form-group">
+                                <label for="internships_input">Internships</label>
+                                <input type="number" id="internships_input" class="form-control" min="0" max="5" value="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="projects_input">Projects</label>
+                                <input type="number" id="projects_input" class="form-control" min="0" max="10" value="2">
+                            </div>
+                            <div class="form-group">
+                                <label for="backlogs_input">Backlogs</label>
+                                <input type="number" id="backlogs_input" class="form-control" min="0" max="5" value="0">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 10px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="dsa_skill_checkbox" checked>
+                                <span>Strong DSA Skill (Data Structures & Algorithms)</span>
+                            </label>
+                        </div>
+
+                        <hr style="border-color: rgba(255,255,255,0.08); margin: 16px 0;">
+
+                        <div class="form-group">
+                            <label for="resume_file_input">📄 Upload Resume (PDF or DOCX)</label>
+                            <input type="file" id="resume_file_input" class="form-control" accept=".pdf,.docx">
+                            <div id="resume_parse_status" class="status-item" style="display: none; margin-top: 8px;"></div>
+                            <input type="hidden" id="resume_text_hidden" value="">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="skills_input">Technical Skills (comma separated)</label>
+                            <textarea id="skills_input" class="form-control" rows="4" placeholder="e.g. Python, SQL, Git, React, Node.js">Python, SQL, Git</textarea>
+                        </div>
+
+                        <button type="submit" id="analyze_btn" class="btn-primary">
+                            🚀 Analyze & Predict Career
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Engine Status Panel -->
+                <div class="glass-card">
+                    <h3 class="card-title">📊 Engine Status</h3>
+                    <div class="status-item {% if profile_model_active %}status-active{% else %}status-offline{% endif %}">
+                        {% if profile_model_active %}✅ Placement Predictor (profile_model.pkl): Active{% else %}❌ Placement Predictor: Offline{% endif %}
+                    </div>
+                    <div class="status-item {% if skill_model_active %}status-active{% else %}status-offline{% endif %}">
+                        {% if skill_model_active %}✅ Career Recommender (job_role_model.pkl): Active{% else %}❌ Career Recommender: Offline{% endif %}
+                    </div>
+                    <div class="status-item status-active">
+                        ⚡ Groq AI Cloud Engine: Active (Llama 3.3 70B)
+                    </div>
+                    <div class="status-item status-active">
+                        💾 Recommendation Cache Memory: Active (discrepancy_cache.json)
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area / Right Panel -->
+            <section class="content-col">
+                <!-- Empty Placeholder State -->
+                <div id="empty_state" class="glass-card" style="text-align: center; padding: 70px 40px;">
+                    <div style="font-size: 4.5rem; margin-bottom: 20px;">🤖</div>
+                    <h3 style="font-size: 1.5rem; margin-bottom: 12px; color: #a5b4fc;">Waiting for Career Analysis Inputs...</h3>
+                    <p style="color: #9ca3af; max-width: 520px; margin: 0 auto;">
+                        Adjust your academic parameters on the left panel, upload your resume (PDF/DOCX) or input technical skills, then click <strong>Analyze & Predict Career</strong> to generate fit recommendations.
+                    </p>
+                </div>
+
+                <!-- Active Results Container -->
+                <div id="results_container" style="display: none;">
+                    <!-- Dual Recommendation Comparison & Cache Memory Learning Card -->
+                    <div id="dual_recommendations_container" class="glass-card" style="margin-bottom: 20px; border-color: rgba(99, 102, 241, 0.5);">
+                        <h3 class="card-title" style="color: #818cf8; margin-bottom: 8px;">🧠 Dual Job Recommendation (ML Model vs Groq AI) & Cache Memory</h3>
+                        <div id="dual_insights_content"></div>
+                    </div>
+
+                    <!-- Recommended Career Paths Top Cards -->
+                    <div style="margin-bottom: 20px;">
+                        <h2 style="color: #34d399; font-size: 1.6rem; margin-bottom: 4px;">✍️ Recommended Career Paths</h2>
+                        <p style="color: #9ca3af; font-size: 0.9rem;">
+                            Top predicted career paths based on your academic profile and technical skills.
+                        </p>
+                    </div>
+
+                    <div id="top_recs_container" class="recs-grid"></div>
+
+
+                    <!-- Career Path Match Rankings -->
+                    <div class="glass-card">
+                        <h3 class="card-title">📊 Career Path Match Rankings</h3>
+                        <div id="rankings_bar_container"></div>
+                    </div>
+
+                    <!-- ATS Score & Skills Gap Details Container -->
+                    <div class="glass-card">
+                        <h3 class="card-title">🎯 ATS Score & Role Details</h3>
+                        
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label for="role_detail_select">Select a recommended role to view deep ATS gap analysis:</label>
+                            <select id="role_detail_select" class="form-select"></select>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 24px;">
+                            <!-- Circular Gauge -->
+                            <div class="gauge-container">
+                                <div class="circular-progress">
+                                    <svg viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" r="42" stroke="rgba(255, 255, 255, 0.05)" stroke-width="8" fill="transparent" />
+                                        <circle id="gauge_circle" cx="50" cy="50" r="42" stroke="#10b981" stroke-width="8" fill="transparent"
+                                                stroke-dasharray="263.89" stroke-dashoffset="0"
+                                                stroke-linecap="round" style="transform: rotate(-90deg); transform-origin: 50px 50px; transition: stroke-dashoffset 0.8s ease;" />
+                                    </svg>
+                                    <div class="circular-progress-text">
+                                        <span id="gauge_score_text" style="font-size: 1.8rem; font-weight: 800; color: #fff;">0%</span>
+                                        <span style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase;">ATS Score</span>
+                                    </div>
+                                </div>
+                                <div id="gauge_badge" class="score-badge score-high">Match Score</div>
+                            </div>
+
+                            <!-- Tabs Container -->
+                            <div class="tabs-container">
+                                <div class="tabs-header">
+                                    <button class="tab-btn active" data-tab="tab_skills_gap">✨ Skills Gap</button>
+                                    <button class="tab-btn" data-tab="tab_required_skills">📋 Required Skills</button>
+                                    <button class="tab-btn" data-tab="tab_your_skills">📝 Your Skills</button>
+                                    <button class="tab-btn" data-tab="tab_market_insights">📈 Market Trends</button>
+                                    <button class="tab-btn" data-tab="tab_live_jobs">💼 Apply Jobs</button>
+                                    <button class="tab-btn" data-tab="tab_course_gen">📚 AI Course Generator</button>
+                                </div>
+
+                                <!-- Tab 1: Skills Gap Analysis -->
+                                <div id="tab_skills_gap" class="tab-content active">
+                                    <h4 style="color: #34d399; margin-bottom: 8px;">✅ Matched Technical Skills</h4>
+                                    <div id="matched_skills_badges" style="margin-bottom: 16px;"></div>
+                                    <h4 style="color: #f87171; margin-bottom: 8px;">❌ Missing Critical Skills</h4>
+                                    <div id="missing_skills_badges"></div>
+                                </div>
+
+                                <!-- Tab 2: Required Role Skills -->
+                                <div id="tab_required_skills" class="tab-content">
+                                    <h4 style="color: #818cf8; margin-bottom: 8px;">Required Skills for Selected Role</h4>
+                                    <div id="required_skills_badges"></div>
+                                </div>
+
+                                <!-- Tab 3: Your Skills -->
+                                <div id="tab_your_skills" class="tab-content">
+                                    <h4 style="color: #60a5fa; margin-bottom: 8px;">Your Registered Skills</h4>
+                                    <div id="your_skills_badges"></div>
+                                </div>
+
+                                <!-- Tab 4: Market Insights (Tavily) -->
+                                <div id="tab_market_insights" class="tab-content">
+                                    <h4 style="color: #818cf8; margin-bottom: 12px;">Real-Time Job Market Insights (Tavily)</h4>
+                                    <div id="market_insights_container"></div>
+                                </div>
+
+                                <!-- Tab 5: Live Jobs & Internships -->
+                                <div id="tab_live_jobs" class="tab-content">
+                                    <h4 style="color: #6ee7b7; margin-bottom: 12px;">Active Jobs & Internships</h4>
+                                    <div id="live_jobs_container"></div>
+                                </div>
+
+                                <!-- Tab 6: AI Course Generator & Interactive Tutor -->
+                                <div id="tab_course_gen" class="tab-content">
+                                    <h4 style="color: #a5b4fc; margin-bottom: 12px;">📚 AI Course Generator & Interactive Tutor</h4>
+                                    
+                                    <div class="form-row-2" style="margin-bottom: 12px;">
+                                        <div class="form-group">
+                                            <label for="course_goal_select">Select Target Role / Skill Goal:</label>
+                                            <select id="course_goal_select" class="form-select"></select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>🤖 AI Generation Engine:</label>
+                                            <div style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+                                                <span>⚡ Groq AI Cloud</span>
+                                                <span class="badge badge-normal" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">Llama 3.3 70B</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row-3" style="margin-bottom: 12px;">
+                                        <div class="form-group">
+                                            <label for="course_difficulty_select">Difficulty Level</label>
+                                            <select id="course_difficulty_select" class="form-select">
+                                                <option value="Beginner">Beginner (Foundations)</option>
+                                                <option value="Intermediate" selected>Intermediate (Applied)</option>
+                                                <option value="Advanced">Advanced (Enterprise Architecture)</option>
+                                            </select>
+                                        </div>
+                                         <div class="form-group">
+                                            <label for="course_duration_select">Course Duration</label>
+                                            <select id="course_duration_select" class="form-select">
+                                                <option value="auto" selected>✨ Auto-Detect Timeline (Matched to Subject Complexity)</option>
+                                                <option value="2">2 Weeks (Accelerated / Single Tool)</option>
+                                                <option value="4">4 Weeks (Standard Core Skill)</option>
+                                                <option value="6">6 Weeks (In-Depth Skill)</option>
+                                                <option value="8">8 Weeks (Comprehensive Mastery)</option>
+                                                <option value="12">12 Weeks (Mastery Track / Domain)</option>
+                                                <option value="16">16 Weeks (Full Stack & AI Engineer Track)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="course_style_select">Learning Style</label>
+                                            <select id="course_style_select" class="form-select">
+                                                <option value="Project-Based" selected>Project-Based Lab</option>
+                                                <option value="Theory & Concepts">Deep Conceptual Focus</option>
+                                                <option value="Interview Preparation">Interview Prep Track</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <button id="generate_course_btn" class="btn-primary" style="margin-bottom: 16px;">
+                                        🚀 Generate Tailored AI Course Curriculum (Groq AI)
+                                    </button>
+
+
+
+                                    <!-- Course Progress Tracker Bar -->
+                                    <div id="course_progress_wrapper" style="display: none; margin-bottom: 20px; background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; font-weight: 600;">
+                                            <span>🎓 Overall Course Completion</span>
+                                            <span id="course_progress_text" style="color: #34d399;">0%</span>
+                                        </div>
+                                        <div class="rec-bar-bg" style="height: 8px;">
+                                            <div id="course_progress_fill" class="rec-bar-fill rec-bar-fill-top" style="width: 0%;"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="course_roadmap_container"></div>
+
+
+                                    <hr style="border-color: rgba(255,255,255,0.08); margin: 20px 0;">
+
+                                    <!-- Chatbot Area -->
+                                    <h4 style="color: #818cf8; margin-bottom: 10px;">💬 Interactive Course Chatbot</h4>
+                                    <div id="ollama_status_box" class="status-item status-offline" style="margin-bottom: 10px;"></div>
+
+                                    <div class="form-group">
+                                        <label for="ollama_model_select">Select Local Ollama Model:</label>
+                                        <select id="ollama_model_select" class="form-select">
+                                            <option value="">No local models loaded</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="chat-container">
+                                        <div id="chat_messages" class="chat-messages">
+                                            <div class="chat-bubble chat-assistant">
+                                                Hello! I am your AI Educational Tutor. Ask any questions about your target course or career path!
+                                            </div>
+                                        </div>
+                                        <div class="chat-input-area">
+                                            <input type="text" id="chat_input" class="form-control" placeholder="Ask a question..." style="border-radius: 8px;">
+                                            <button id="chat_send_btn" class="btn-primary" style="width: auto; padding: 8px 16px;">Send</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>
