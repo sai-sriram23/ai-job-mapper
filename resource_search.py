@@ -3,7 +3,13 @@
 import httpx
 import logging
 import re
-from duckduckgo_search import DDGS
+try:
+    from duckduckgo_search import DDGS
+    HAS_DDG = True
+except ImportError:
+    DDGS = None
+    HAS_DDG = False
+
 from tavily_helper import tavily_client
 
 logger = logging.getLogger(__name__)
@@ -118,6 +124,10 @@ def search_youtube_tavily(query: str, max_results: int = 2) -> list[dict]:
 
 def search_web_duckduckgo(query: str, max_results: int = 2) -> list[dict]:
     """Search web tutorial articles via DuckDuckGo."""
+    if not HAS_DDG or DDGS is None:
+        logger.warning("duckduckgo_search package is not available.")
+        return []
+
     resources = []
     try:
         with DDGS() as ddgs:
