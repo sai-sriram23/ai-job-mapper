@@ -14,6 +14,7 @@ from api_key_manager import execute_groq_with_rotation
 from tavily_helper import parse_insights_json
 
 JSON_FILE = "role_skills.json"
+_DB_CACHE = None
 
 # ----------------------------
 # Create JSON
@@ -24,20 +25,32 @@ def initialize_json():
             json.dump({}, f, indent=4)
 
 # ----------------------------
-# Load JSON
+# Load JSON with memory caching
 # ----------------------------
 def load_database():
+    global _DB_CACHE
+    if _DB_CACHE is not None:
+        return _DB_CACHE
+
     initialize_json()
 
-    with open(JSON_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(JSON_FILE, "r") as f:
+            _DB_CACHE = json.load(f)
+    except Exception:
+        _DB_CACHE = {}
+
+    return _DB_CACHE
 
 # ----------------------------
 # Save JSON
 # ----------------------------
 def save_database(data):
+    global _DB_CACHE
+    _DB_CACHE = data
     with open(JSON_FILE, "w") as f:
         json.dump(data, f, indent=4)
+
 
 # ----------------------------
 # Call Groq AI

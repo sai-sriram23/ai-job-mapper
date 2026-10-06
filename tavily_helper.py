@@ -108,30 +108,36 @@ def call_groq_with_fallback(prompt: str, temperature: float = 0.3, is_json: bool
 
 
 
-def get_job_market_insights(job_role: str) -> dict:
-    """Fetch live web data via Tavily and generate structured market insights using Groq AI."""
-    query = f"current job market trends, average salary, top hiring companies for '{job_role}'"
-    tavily_data = search_job_market(query, feature="market")
-    
-    results = tavily_data.get("results", [])
-    results_text = "\n".join([f"- {r.get('title')}: {_sanitize_text(r.get('content'))}" for r in results[:5]])
-    clean_results = str(results_text).replace('"', ' ')
-
-    prompt = f"Analyze search results for '{job_role}'.\n" \
-             "Return JSON with keys: average_salary, market_trends, top_companies, key_demanded_skills, sources.\n\n" \
-             "Search Results:\n" + clean_results
-
+def get_job_market_insights(job_role: str, user_skills: list = None) -> dict:
+    """Fetch live web data via Tavily and generate enhanced 2026 market insights using LangChain engine."""
     try:
-        raw_resp = call_groq_with_fallback(prompt, temperature=0.3, is_json=True, feature="market")
-        return parse_insights_json(raw_resp)
+        from langchain_engine import get_enhanced_market_insights_langchain
+        return get_enhanced_market_insights_langchain(job_role, user_skills)
     except Exception as e:
-        return {
-            "average_salary": f"Competitive industry rate for {job_role}",
-            "market_trends": f"High demand for specialized skills in {job_role}.",
-            "top_companies": [f"Tech Leaders in {job_role}"],
-            "key_demanded_skills": ["Problem Solving", "Domain Expertise"],
-            "sources": ["Industry Reports"]
-        }
+        logger.warning(f"LangChain market insights delegate error ({e}), falling back to direct Tavily search...")
+        query = f"current 2026 job market trends, average salary, top hiring companies for '{job_role}'"
+        tavily_data = search_job_market(query, feature="market")
+        
+        results = tavily_data.get("results", [])
+        results_text = "\n".join([f"- {r.get('title')}: {_sanitize_text(r.get('content'))}" for r in results[:5]])
+        clean_results = str(results_text).replace('"', ' ')
+
+        prompt = f"Analyze search results for '{job_role}'.\n" \
+                 "Return JSON with keys: average_salary, market_trends, top_companies, key_demanded_skills, sources.\n\n" \
+                 "Search Results:\n" + clean_results
+
+        try:
+            raw_resp = call_groq_with_fallback(prompt, temperature=0.3, is_json=True, feature="market")
+            return parse_insights_json(raw_resp)
+        except Exception:
+            return {
+                "average_salary": f"Competitive industry rate for {job_role}",
+                "market_trends": f"High demand for specialized skills in {job_role}.",
+                "top_companies": [f"Tech Leaders hiring {job_role}"],
+                "key_demanded_skills": ["Problem Solving", "Domain Expertise"],
+                "sources": ["2026 Industry Reports"]
+            }
+
 
 
 def get_career_why_and_what(job_role: str, candidate_skills) -> dict:
@@ -158,25 +164,28 @@ def get_career_why_and_what(job_role: str, candidate_skills) -> dict:
         }
 
 
-def get_active_jobs_and_internships(job_role: str) -> dict:
+def get_active_jobs_and_internships(job_role: str, location: str = "All", job_type: str = "All") -> dict:
     """Query Tavily for current job postings AND internship openings, then structure via Groq."""
     parent_role = SUB_TO_PARENT_ROLE.get(job_role.upper())
+    loc_clause = f" in {location}" if location and location != "All" else ""
+    type_clause = f" {job_type}" if job_type and job_type != "All" else " job openings AND internship opportunities"
+
     if parent_role:
-        query = f"latest {job_role} ({parent_role}) job openings AND internship opportunities 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com"
+        query = f"latest {job_role} ({parent_role}){type_clause}{loc_clause} 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com OR site:internshala.com OR site:wellfound.com"
     else:
-        query = f"latest {job_role} job openings AND internship opportunities 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com"
+        query = f"latest {job_role}{type_clause}{loc_clause} 2025 apply now site:linkedin.com OR site:naukri.com OR site:indeed.com OR site:internshala.com OR site:wellfound.com"
         
     tavily_data = search_job_market(query, feature="jobsearch")
     results = tavily_data.get("results", [])
     results_text = ""
-    for r in results[:5]:
+    for r in results[:6]:
         title = _sanitize_text(r.get("title", ""))
         url = r.get("url", "")
         snippet = _sanitize_text(r.get("content", ""))
         results_text += f"Title: {title} | URL: {url} | Snippet: {snippet}\n"
 
     clean_results = str(results_text).replace('"', ' ')
-    prompt = f"Analyze search results for {job_role}.\n" \
+    prompt = f"Analyze search results for {job_role}{loc_clause}.\n" \
              "Extract 6-8 active jobs or internships with title, company, platform, type, url, description.\n" \
              "Return JSON with key 'listings'.\n\nSearch Results:\n" + clean_results
 
@@ -189,31 +198,33 @@ def get_active_jobs_and_internships(job_role: str) -> dict:
     except Exception as e:
         role_encoded = job_role.replace(' ', '%20')
         role_slug = job_role.lower().replace(' ', '-')
+        loc_param = f"&location={location}" if location != "All" else ""
         return {
             "listings": [
                 {
-                    "title": f"{job_role} Jobs on LinkedIn",
-                    "company": "Various Companies",
+                    "title": f"{job_role} Positions on LinkedIn",
+                    "company": "Hiring Partners",
                     "platform": "LinkedIn",
-                    "type": "Job",
-                    "url": f"https://www.linkedin.com/jobs/search/?keywords={role_encoded}",
-                    "description": "Browse active job listings on LinkedIn."
+                    "type": job_type if job_type != "All" else "Job",
+                    "url": f"https://www.linkedin.com/jobs/search/?keywords={role_encoded}{loc_param}",
+                    "description": f"Browse real-time {job_role} job and internship openings."
                 },
                 {
-                    "title": f"{job_role} Jobs on Naukri",
-                    "company": "Various Companies",
+                    "title": f"{job_role} Opportunities on Naukri",
+                    "company": "Top Employers",
                     "platform": "Naukri.com",
-                    "type": "Job",
+                    "type": job_type if job_type != "All" else "Job",
                     "url": f"https://www.naukri.com/{role_slug}-jobs",
-                    "description": "Browse active job listings on Naukri."
+                    "description": f"Explore latest verified hiring listings on Naukri."
                 },
                 {
                     "title": f"{job_role} Internships on Internshala",
-                    "company": "Various Companies",
+                    "company": "Growth Startups",
                     "platform": "Internshala",
                     "type": "Internship",
                     "url": f"https://internshala.com/internships/{role_slug}-internship",
-                    "description": "Browse active internship listings on Internshala."
+                    "description": "Find top paid internship programs matching your profile."
                 }
             ]
         }
+

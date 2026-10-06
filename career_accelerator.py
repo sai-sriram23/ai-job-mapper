@@ -159,3 +159,124 @@ Evaluate the candidate's response. Return ONLY valid JSON:
             "model_answer": "Structure your answer using Situation, Task, Action, and Result with quantitative outcomes."
         }
 
+
+def generate_complete_resume_data(personal_info: dict, experiences: list, education: list, skills: list, target_role: str) -> dict:
+    """
+    Generates an AI-enhanced complete resume dataset with STAR bullet points, ATS summary, and categorized skills.
+    """
+    skills_str = ", ".join(skills) if isinstance(skills, list) else str(skills)
+    exp_summary = json.dumps(experiences[:3]) if experiences else "Software development projects & coursework"
+
+    prompt = f"""
+You are an Executive Resume Writer & ATS Strategist.
+
+Target Role: {target_role}
+Candidate Details:
+Name: {personal_info.get('name', 'Candidate')}
+Headline/Role: {personal_info.get('title', target_role)}
+Skills: {skills_str}
+Raw Experiences / Projects: {exp_summary}
+
+Generate a complete, highly-polished ATS resume JSON object:
+{{
+    "professional_summary": "3-line high-impact executive summary for target role {target_role}.",
+    "categorized_skills": {{
+        "Languages & Core": ["Skill1", "Skill2"],
+        "Frameworks & Tools": ["Tool1", "Tool2"],
+        "Databases & Cloud": ["DB1", "Cloud1"],
+        "Soft Skills & Methodologies": ["Agile", "Problem Solving"]
+    }},
+    "enhanced_experiences": [
+        {{
+            "title": "Role Title",
+            "company": "Company or Project Name",
+            "period": "Dates or Duration",
+            "location": "Location or Remote",
+            "star_bullets": [
+                "STAR Bullet 1 with quantitative metric (%)",
+                "STAR Bullet 2 starting with strong action verb"
+            ]
+        }}
+    ],
+    "ats_score": 92,
+    "optimization_tips": [
+        "Include target keywords at top of experience section.",
+        "Ensure bullet points start with strong action verbs."
+    ]
+}}
+
+Return ONLY valid JSON.
+"""
+    try:
+        raw = execute_groq_with_rotation(prompt, temperature=0.3, is_json=True, feature="career")
+        return parse_insights_json(raw)
+    except Exception as e:
+        logger.error(f"Failed to generate complete resume data: {e}")
+        return {
+            "professional_summary": f"Results-driven technical candidate aiming for {target_role} role. Demonstrated expertise in technical problem solving and scalable architecture.",
+            "categorized_skills": {
+                "Technical Skills": skills if isinstance(skills, list) else [skills_str],
+                "Core Competencies": ["Problem Solving", "Software Architecture", "Team Collaboration"]
+            },
+            "enhanced_experiences": [
+                {
+                    "title": experiences[0].get("title", "Project Lead") if experiences else target_role,
+                    "company": experiences[0].get("company", "Independent Project") if experiences else "Key Project",
+                    "period": "Recent",
+                    "location": "Remote",
+                    "star_bullets": [
+                        f"Designed and engineered scalable solutions using {skills_str[:30]}, improving operational efficiency by 30%.",
+                        "Collaborated with cross-functional teams to deploy robust applications on deadline."
+                    ]
+                }
+            ],
+            "ats_score": 85,
+            "optimization_tips": ["Ensure quantifiable metrics are present in all experience bullet points."]
+        }
+
+
+def evaluate_job_resume_fit(job_title: str, job_company: str, job_desc: str, candidate_skills: list, resume_text: str = "") -> dict:
+    """
+    Evaluates candidate's skill fit against a specific live job posting and provides actionable match breakdown.
+    """
+    skills_str = ", ".join(candidate_skills) if isinstance(candidate_skills, list) else str(candidate_skills)
+
+    prompt = f"""
+You are a Senior Tech Recruiter and Hiring Match Engine.
+
+Job Title: {job_title}
+Company: {job_company}
+Job Snippet / Description:
+"{job_desc[:1200]}"
+
+Candidate Skills: {skills_str}
+Candidate Resume Snippet: "{resume_text[:500]}"
+
+Analyze candidate suitability for this position.
+Return ONLY valid JSON:
+{{
+    "match_score": 82,
+    "fit_rating": "Strong Match / Moderate Fit / Needs Key Skills",
+    "matched_skills": ["Skill1", "Skill2"],
+    "missing_skills": ["Skill3", "Skill4"],
+    "key_requirements": ["Req 1", "Req 2"],
+    "verdict_summary": "2-sentence clear assessment of why the candidate fits or what gaps to bridge.",
+    "application_tip": "Specific advice for tailoring resume bullet points for this position."
+}}
+"""
+    try:
+        raw = execute_groq_with_rotation(prompt, temperature=0.2, is_json=True, feature="career")
+        return parse_insights_json(raw)
+    except Exception as e:
+        logger.error(f"Failed to evaluate job resume fit: {e}")
+        return {
+            "match_score": 75,
+            "fit_rating": "Moderate Fit",
+            "matched_skills": candidate_skills[:3] if candidate_skills else ["General CS"],
+            "missing_skills": ["Role-specific domain tools"],
+            "key_requirements": ["Core technical proficiency", "Communication"],
+            "verdict_summary": f"Your technical foundation aligns well with the key needs for {job_title} at {job_company}.",
+            "application_tip": "Emphasize past projects that utilize relevant frameworks."
+        }
+
+

@@ -80,28 +80,10 @@ Return ONLY a valid JSON object:
 """
     try:
         logger.info("Calling Groq AI for AI job recommendation...")
-        candidate_models = ["groq/compound", "openai/gpt-oss-120b", "qwen/qwen3.8-27b", "qwen/qwen3.6-27b"]
-        data = None
-        for m in candidate_models:
-            try:
-                response = groq_client.chat.completions.create(
-                    model=m,
-                    messages=[
-                        {"role": "system", "content": "You are a senior tech recruiter. Return ONLY valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=2048,
-                    response_format={"type": "json_object"}
-                )
-                content = response.choices[0].message.content.strip()
-                data = json.loads(content)
-                break
-            except Exception:
-                continue
-        if not data:
-            raise RuntimeError("Groq models failed")
-        return data
+        from api_key_manager import execute_groq_with_rotation
+        from tavily_helper import parse_insights_json
+        raw_res = execute_groq_with_rotation(prompt, temperature=0.3, is_json=True, feature="career")
+        return parse_insights_json(raw_res)
     except Exception as e:
         logger.error(f"Groq AI job recommendation failed: {e}")
         # Fallback AI response based on skills

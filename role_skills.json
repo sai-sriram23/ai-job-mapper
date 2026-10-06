@@ -373,5 +373,89 @@
             "Networking",
             "DevOps"
         ]
+    },
+    "Modern Full Stack Web Developer": {
+        "required_skills": [
+            "JavaScript/TypeScript",
+            "React",
+            "Next.js",
+            "Node.js",
+            "FastAPI",
+            "Docker",
+            "Kubernetes",
+            "CI/CD (GitHub Actions)",
+            "AWS Cloud Services",
+            "Advanced SQL"
+        ]
+    },
+    "MLOps & GenAI Platform Specialist": {
+        "required_skills": [
+            "Python",
+            "PyTorch",
+            "LangChain",
+            "Retrieval-Augmented Generation (RAG)",
+            "Vector Databases",
+            "FastAPI",
+            "Docker",
+            "Kubernetes",
+            "CI/CD (GitHub Actions)",
+            "Cloud AI Services (e.g., AWS SageMaker)"
+        ]
+    },
+    "AI / LLM Engineer": {
+        "required_skills": [
+            "Python",
+            "PyTorch",
+            "TensorFlow",
+            "FastAPI",
+            "Docker",
+            "Kubernetes",
+            "LangChain",
+            "Vector Databases (e.g., Pinecone)",
+            "CI/CD (GitHub Actions)",
+            "Cloud Platforms (AWS/GCP)"
+        ]
+    },
+    "Full Stack AI Engineer": {
+        "required_skills": [
+            "Python",
+            "FastAPI",
+            "React",
+            "Docker",
+            "Kubernetes",
+            "CI/CD (GitHub Actions)",
+            "AWS",
+            "PostgreSQL",
+            "PyTorch",
+            "Airflow"
+        ]
+    },
+    "HR Technology & People Analytics Engineer": {
+        "required_skills": [
+            "Workday",
+            "BambooHR",
+            "Greenhouse ATS",
+            "Lever ATS",
+            "SQL",
+            "Python for data analysis",
+            "HR data visualization (Tableau/PowerBI)",
+            "API integration (REST)",
+            "Cloud data pipelines (AWS Glue)",
+            "People analytics & predictive modeling"
+        ]
+    },
+    "MLOps & GenAI Platform Engineer": {
+        "required_skills": [
+            "Python",
+            "PyTorch",
+            "TensorFlow",
+            "AWS SageMaker",
+            "Kubernetes",
+            "Docker",
+            "CI/CD (GitHub Actions)",
+            "Vector Databases (Pinecone)",
+            "Prompt Engineering & RAG",
+            "Data Pipeline Engineering (Spark/ETL)"
+        ]
     }
 }

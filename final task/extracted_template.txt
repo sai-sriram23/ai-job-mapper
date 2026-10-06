@@ -1,0 +1,96 @@
+[Title of the Paper: Concise, Specific and Informative]
+Abstract—[150–250 words, one paragraph. Sentence 1: context of the domain. Sentence 2: the gap or problem. Sentence 3: what you propose. Sentence 4: how it was evaluated (dataset, tools, metrics). Sentence 5: headline results, e.g., accuracy improved from X% to Y%. Sentence 6: significance. Avoid citations, equations and undefined abbreviations.]
+Keywords—[keyword 1], [keyword 2], [keyword 3], [keyword 4], [keyword 5]
+Introduction
+[Guidance: 1–1.5 columns of context. Move from the broad domain to your specific problem (funnel structure).]
+[Paragraph 1 – Domain overview and its importance, with citations [1], [2].]
+[Paragraph 2 – Current approaches/technologies and their growing use.]
+[Paragraph 3 – Limitations of existing approaches that lead to your work.]
+[Paragraph 4 – Brief statement of your proposed solution.]
+Contributions of this Paper
+[Contribution 1: a novel framework/model/system for …]
+[Contribution 2: an improved algorithm that reduces … by …%]
+[Contribution 3: extensive evaluation on … dataset/real-world setup]
+[Paper organization: Section II reviews related work, Section III describes the proposed methodology and implementation, Section IV presents the results analysis and comparisons, and Section V concludes the paper with future scope.]
+Motivation
+[Guidance: Explain WHY this work is needed: real-world need, social/industrial impact, and gaps that inspired the project.]
+[Real-world need or statistics supporting the importance of the problem.]
+[Limitations/inefficiencies in existing systems or practices.]
+[Potential benefits: cost, time, accuracy, safety, accessibility, etc.]
+[Academic/industrial driver that triggered this project.]
+Problem Statement
+[Guidance: State the problem precisely, with a formal definition and objectives.]
+[Formal statement: Given [input/data/system], the goal is to [task] such that [constraint/objective] is achieved.]
+[Objective 1 – measurable]
+[Objective 2 – measurable]
+[Objective 3 – measurable]
+Literature Survey (Papers from IEEE, ACM, and Springer)
+[Guidance: Review 15–30 recent papers (last 5 years preferred) from IEEE, ACM and Springer. Group by theme, compare, and end with the research gap. Do not simply list papers.]
+[Theme A: Describe how studies [3]–[6] approached … and what they achieved.]
+[Theme B: Describe studies [7]–[10] … highlighting strengths and weaknesses.]
+Comparative Summary of Related Work
+TABLE I
+Comparison of Existing Approaches
+Research Gap
+[Clearly state what existing work fails to address and how your work fills this gap.]
+Proposed Methodology / Implementation
+[Guidance: Provide enough detail for another researcher to reproduce your work. Include an architecture/flow diagram.]
+System Overview
+[Describe the overall architecture, as shown in Fig. 1.]
+[Insert Fig. 1: System Architecture / Block Diagram]
+Fig. 1.  Proposed system architecture.
+Dataset / Data Collection
+[Source, size, features, class distribution, preprocessing (cleaning, normalization, augmentation, train/validation/test split).]
+Algorithm / Model Design
+[Explain the algorithm step-by-step with pseudocode and equations. Number equations and refer to them as (1), (2), …]
+y = f(x; θ)	(1)
+Implementation Details
+[Hardware/software environment, language, libraries, hyperparameters, tools.]
+Evaluation Metrics
+[Define metrics, e.g., accuracy, precision, recall, F1-score, RMSE, latency, throughput.]
+Results Analysis and Comparisons
+[Guidance: Present results with tables/graphs, then interpret them. Compare with baselines.]
+Experimental Setup
+[Summarize configuration and test conditions.]
+Performance Results
+TABLE II
+Performance Comparison with Existing Methods
+[Insert Fig. 2: Graph / Confusion Matrix / Output Screenshot]
+Fig. 2.  Result visualization.
+Discussion
+[Interpret the results: why the proposed method outperforms others, trade-offs, ablation study, error analysis, and limitations.]
+Conclusion and Future Scope
+[Guidance: Do not copy the abstract. Summarize findings and contribution, then suggest realistic extensions.]
+Conclusion
+[Summarize the problem, approach, and key findings with numbers. State the significance.]
+Future Scope
+[Extension 1: larger/real-time dataset, edge/cloud deployment.]
+[Extension 2: advanced techniques (e.g., deep learning, IoT, blockchain).]
+[Extension 3: addressing scalability, security, or generalization.]
+Acknowledgment
+[Thank the guide, institution, funding agency, or lab facilities. Optional.]
+References
+[Guidance: IEEE style, numbered in order of citation, 8-pt font. Include DOI where available.]
+[1]	A. Author, B. Author, and C. Author, “Title of the paper,” IEEE Trans. Xxxx Xxxx, vol. X, no. Y, pp. 1–10, Mon. Year, doi: 10.xxxx/xxxxx.
+[2]	A. Author and B. Author, Title of the Book, 2nd ed. City, Country: Publisher, Year.
+[3]	A. Author, “Title of conference paper,” in Proc. IEEE Conf. Name (ACRONYM), City, Country, Year, pp. 100–105.
+[4]	A. Author, “Title of ACM/Springer paper,” in Proc. ACM/Springer Conf., Year, pp. 1–10, doi: 10.xxxx/xxxxx.
+[5]	Organization, “Title of web resource.” Website. https://example.com (accessed Mon. DD, YYYY).
+[Author 1 Name]
+Dept. of [Department]
+[Institution Name]
+[City, Country] | [email@domain.com] | [Author 2 Name]
+Dept. of [Department]
+[Institution Name]
+[City, Country] | [email@domain.com] | [Author 3 Name]
+Dept. of [Department]
+[Institution Name]
+[City, Country] | [email@domain.com]
+Ref. | Year | Method | Dataset | Limitation
+[1] | [YYYY] | [Technique] | [Dataset] | [Gap]
+[2] | [YYYY] | [Technique] | [Dataset] | [Gap]
+[3] | [YYYY] | [Technique] | [Dataset] | [Gap]
+Method | Acc. (%) | Prec. (%) | Rec. (%) | F1 (%)
+Baseline 1 | [xx.x] | [xx.x] | [xx.x] | [xx.x]
+Baseline 2 | [xx.x] | [xx.x] | [xx.x] | [xx.x]
+Proposed | [xx.x] | [xx.x] | [xx.x] | [xx.x]

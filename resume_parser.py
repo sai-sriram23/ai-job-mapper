@@ -76,21 +76,33 @@ COMMON_TECH_SKILLS = [
     "Figma", "UI/UX", "Wireframing", "Prototyping", "Agile", "Scrum", "Jira", "PyTest", "Selenium"
 ]
 
+# Pre-compiled regex patterns for common skills
+_COMPILED_SKILL_PATTERNS = {
+    skill: re.compile(r'(?<![A-Za-z0-9])' + re.escape(skill) + r'(?![A-Za-z0-9])', re.IGNORECASE)
+    for skill in COMMON_TECH_SKILLS
+}
+
 def extract_skills_fallback(resume_text, ref_skills_list=None):
-    """Fallback skill extractor using regex keyword matching if LLM API is unavailable."""
+    """Fallback skill extractor using pre-compiled regex keyword matching if LLM API is unavailable."""
     if not resume_text:
         return []
     skills_found = set()
-    all_target_skills = list(set(COMMON_TECH_SKILLS + (ref_skills_list or [])))
     
-    for skill in all_target_skills:
-        # Match skill using regex boundaries to prevent partial word mismatches
-        escaped_skill = re.escape(skill)
-        pattern = r'(?<![A-Za-z0-9])' + escaped_skill + r'(?![A-Za-z0-9])'
-        if re.search(pattern, resume_text, re.IGNORECASE):
+    # Fast match pre-compiled common skills
+    for skill, compiled_re in _COMPILED_SKILL_PATTERNS.items():
+        if compiled_re.search(resume_text):
             skills_found.add(skill)
+
+    # Match extra custom skills if provided
+    if ref_skills_list:
+        for skill in ref_skills_list:
+            if skill not in _COMPILED_SKILL_PATTERNS:
+                pattern = r'(?<![A-Za-z0-9])' + re.escape(skill) + r'(?![A-Za-z0-9])'
+                if re.search(pattern, resume_text, re.IGNORECASE):
+                    skills_found.add(skill)
             
     return sorted(list(skills_found))
+
 
 # -----------------------------
 # Extract text from PDF

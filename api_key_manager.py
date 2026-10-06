@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 # Fallback candidate models for Groq
 GROQ_MODELS = [
-    "groq/compound",
     "openai/gpt-oss-120b",
     "qwen/qwen3.8-27b",
-    "qwen/qwen3.6-27b"
+    "openai/gpt-oss-20b"
 ]
+
+
 
 FEATURE_GROQ_MAPPING = {
     "skill": ["APIKEY_SKILL", "GROQ_API_KEY_SKILL"],
@@ -53,18 +54,22 @@ load_env()
 
 def get_groq_keys(feature: str = None) -> List[str]:
     """
-    Collect all available Groq API keys, prioritizing feature-specific keys if feature is specified:
+    Collect all available Groq API keys (starting with 'gsk_'), prioritizing feature-specific keys if feature is specified:
     1. Feature-specific keys (e.g. APIKEY_SKILL, APIKEY_COURSEGEN, APIKEY_CAREER)
     2. Streamlit UI custom keys
-    3. Any environment variable starting with GROQ_API_KEY or APIKEY_
+    3. Any environment variable starting with GROQ_API_KEY or APIKEY_ with a 'gsk_' prefix
     """
     keys = []
     
+    # Helper to check if key is valid Groq key format
+    def is_valid_groq(k: str) -> bool:
+        return bool(k and k.startswith("gsk_") and not k.startswith("your_"))
+
     # 1. Feature specific key check
     if feature and feature.lower() in FEATURE_GROQ_MAPPING:
         for var_name in FEATURE_GROQ_MAPPING[feature.lower()]:
             val = os.environ.get(var_name, "").strip()
-            if val and not val.startswith("your_") and val not in keys:
+            if is_valid_groq(val) and val not in keys:
                 keys.append(val)
 
     # 2. Check Streamlit session state
@@ -74,19 +79,19 @@ def get_groq_keys(feature: str = None) -> List[str]:
             raw_ui = st.session_state["custom_groq_keys"]
             for k in raw_ui.replace("\n", ",").split(","):
                 k_clean = k.strip()
-                if k_clean and k_clean not in keys:
+                if is_valid_groq(k_clean) and k_clean not in keys:
                     keys.append(k_clean)
     except Exception:
         pass
 
-    # 3. Dynamically scan all environment variables starting with GROQ_API_KEY or APIKEY_
+    # 3. Dynamically scan all environment variables for Groq keys (gsk_)
     env_keys_sorted = sorted([k for k in os.environ.keys() if k.startswith("GROQ_API_KEY") or k.startswith("APIKEY_")])
     for env_var in env_keys_sorted:
         val = os.environ.get(env_var, "")
         if val:
             for k in val.replace("\n", ",").split(","):
                 k_clean = k.strip()
-                if k_clean and not k_clean.startswith("your_") and k_clean not in keys:
+                if is_valid_groq(k_clean) and k_clean not in keys:
                     keys.append(k_clean)
                     
     return keys
@@ -94,18 +99,22 @@ def get_groq_keys(feature: str = None) -> List[str]:
 
 def get_tavily_keys(feature: str = None) -> List[str]:
     """
-    Collect all available Tavily API keys, prioritizing feature-specific keys if feature is specified:
+    Collect all available Tavily API keys (starting with 'tvly-'), prioritizing feature-specific keys if feature is specified:
     1. Feature-specific keys (e.g. APIKEY_MARKET, APIKEY_JOBSEARCH)
     2. Streamlit UI custom keys
-    3. Any environment variable starting with TAVILY_API_KEY or APIKEY_
+    3. Any environment variable starting with TAVILY_API_KEY or APIKEY_ with a 'tvly-' prefix
     """
     keys = []
     
+    # Helper to check if key is valid Tavily key format
+    def is_valid_tavily(k: str) -> bool:
+        return bool(k and k.startswith("tvly-") and not k.startswith("your_"))
+
     # 1. Feature specific key check
     if feature and feature.lower() in FEATURE_TAVILY_MAPPING:
         for var_name in FEATURE_TAVILY_MAPPING[feature.lower()]:
             val = os.environ.get(var_name, "").strip()
-            if val and not val.startswith("your_") and val not in keys:
+            if is_valid_tavily(val) and val not in keys:
                 keys.append(val)
 
     # 2. Check Streamlit session state
@@ -115,22 +124,23 @@ def get_tavily_keys(feature: str = None) -> List[str]:
             raw_ui = st.session_state["custom_tavily_keys"]
             for k in raw_ui.replace("\n", ",").split(","):
                 k_clean = k.strip()
-                if k_clean and k_clean not in keys:
+                if is_valid_tavily(k_clean) and k_clean not in keys:
                     keys.append(k_clean)
     except Exception:
         pass
 
-    # 3. Dynamically scan all environment variables starting with TAVILY_API_KEY or APIKEY_
+    # 3. Dynamically scan all environment variables for Tavily keys (tvly-)
     env_keys_sorted = sorted([k for k in os.environ.keys() if k.startswith("TAVILY_API_KEY") or k.startswith("APIKEY_")])
     for env_var in env_keys_sorted:
         val = os.environ.get(env_var, "")
         if val:
             for k in val.replace("\n", ",").split(","):
                 k_clean = k.strip()
-                if k_clean and not k_clean.startswith("your_") and k_clean not in keys:
+                if is_valid_tavily(k_clean) and k_clean not in keys:
                     keys.append(k_clean)
                     
     return keys
+
 
 
 def _mask_key(key: str) -> str:

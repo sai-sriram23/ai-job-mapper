@@ -20,8 +20,22 @@ from course_generator import (
 from career_accelerator import (
     generate_ats_resume_bullets,
     generate_mock_interview_questions,
-    evaluate_interview_answer
+    evaluate_interview_answer,
+    generate_complete_resume_data,
+    evaluate_job_resume_fit
 )
+from resume_builder_helper import (
+    render_resume_html_ats,
+    render_resume_html_modern,
+    render_resume_plain_text,
+    calculate_resume_ats_score
+)
+from portal_views import (
+    render_automated_resume_builder_view,
+    render_live_job_portal_view
+)
+
+
 
 
 
@@ -83,6 +97,16 @@ def load_skill_ml_assets():
 
 ml_model, ml_encoders = load_ml_assets()
 skill_model, skill_tfidf, skill_encoder = load_skill_ml_assets()
+
+@st.cache_data(ttl=3600)
+def fetch_why_what_cached(role: str, skills_tuple: tuple):
+    from tavily_helper import get_career_why_and_what
+    return get_career_why_and_what(role, list(skills_tuple))
+
+@st.cache_data(ttl=3600)
+def fetch_cached_insights(role: str):
+    from tavily_helper import get_job_market_insights
+    return get_job_market_insights(role)
 
 if ml_encoders:
     branch_options = list(ml_encoders['branch'].classes_)
@@ -300,8 +324,19 @@ st.markdown("""
 st.markdown('<div class="main-title">AI Hybrid Job Recommendation System</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Predicts Placement Opportunities via Profile (profile_model.pkl) & Career Paths via Technical Skills (job_role_model.pkl, label_encoder.pkl, tfidf.pkl)</div>', unsafe_allow_html=True)
 
-# Sidebar Configuration
 with st.sidebar:
+    st.markdown("## 🧭 Workspace Module")
+    app_mode = st.radio(
+        "Select Active Navigation Mode:",
+        options=[
+            "🚀 Career Recommender & ATS Analyzer",
+            "📄 Automated Resume Builder",
+            "💼 Live Job & Internship Portal"
+        ],
+        index=0
+    )
+    st.markdown("---")
+
     st.markdown("### ⚙️ Fallback Logic Rules")
     st.info("The **AI Career Advisor** triggers only if the local ML model cannot predict a path confidently (<35%) AND the database contains no high-matching roles (<30%).")
     
@@ -363,469 +398,513 @@ if "resume_text" not in st.session_state:
 if "analysis_results" not in st.session_state:
     st.session_state["analysis_results"] = None
 
-# Application Flow
-col1, col2 = st.columns([2, 3], gap="large")
+# Application Mode Branching
+if app_mode == "📄 Automated Resume Builder":
+    render_automated_resume_builder_view()
+elif app_mode == "💼 Live Job & Internship Portal":
+    render_live_job_portal_view()
+else:
+    # Application Flow for Career Recommender & ATS Analyzer
+    col1, col2 = st.columns([2, 3], gap="large")
 
-with col1:
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.subheader("👤 Candidate Academic Profile")
-    st.write("Academic metrics used by the Profile Classifier:")
-    
-    c_branch = st.selectbox("Academic Branch / Major", options=branch_options)
-    
-    col_cgpa, col_tier = st.columns(2)
-    with col_cgpa:
-        c_cgpa = st.slider("CGPA", min_value=5.0, max_value=10.0, value=8.0, step=0.1)
-    with col_tier:
-        c_tier = st.selectbox("College Tier", options=[1, 2, 3], index=1)
+    with col1:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.subheader("👤 Candidate Academic Profile")
+
+        st.write("Academic metrics used by the Profile Classifier:")
         
-    st.markdown("#### 📝 Assessments & Performance")
-    col_cod, col_apt = st.columns(2)
-    with col_cod:
-        c_coding = st.slider("Coding Score (0-100)", min_value=0, max_value=100, value=75)
-    with col_apt:
-        c_aptitude = st.slider("Aptitude Score (0-100)", min_value=0, max_value=100, value=75)
+        c_branch = st.selectbox("Academic Branch / Major", options=branch_options)
         
-    c_comm = st.slider("Communication Score (0-10)", min_value=0, max_value=10, value=8)
-    
-    st.markdown("#### 💼 Experience & History")
-    col_int, col_proj, col_back = st.columns(3)
-    with col_int:
-        c_internships = st.number_input("Internships Done", min_value=0, max_value=5, value=1)
-    with col_proj:
-        c_projects = st.number_input("Projects Done", min_value=0, max_value=10, value=2)
-    with col_back:
-        c_backlogs = st.number_input("Active Backlogs", min_value=0, max_value=5, value=0)
-        
-    c_dsa = st.checkbox("DSA Skill (Strong Data Structures & Algorithms)", value=True)
-    
-    st.markdown("#### 📄 Skills & Resume Source")
-    uploaded_file = st.file_uploader(
-        "Upload Resume (PDF or DOCX)",
-        type=["pdf", "docx"],
-        help="Upload a resume to automatically detect and extract technical skills."
-    )
-    
-    # Process uploaded file and store extracted skills in session state
-    if uploaded_file:
-        file_key = f"{uploaded_file.name}_{uploaded_file.size}"
-        if st.session_state["last_uploaded_file_key"] != file_key:
-            with st.spinner("🔍 Parsing resume and extracting technical skills..."):
-                try:
-                    resume_profile = analyze_resume_profile(uploaded_file)
-                    skills_extracted = resume_profile.get("skills", [])
-                    extracted_skills_str = ", ".join(skills_extracted)
-                    st.session_state["extracted_skills_str"] = extracted_skills_str
-                    st.session_state["resume_text"] = resume_profile.get("resume_text", "")
-                    st.session_state["last_uploaded_file_key"] = file_key
-                    st.session_state["c_skills_input_key"] = extracted_skills_str
-                    if skills_extracted:
-                        st.toast(f"✅ Extracted {len(skills_extracted)} skills from resume!", icon="🎉")
-                    else:
-                        st.warning("⚠️ No technical skills were automatically detected from the resume text. You can manually enter skills below.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error parsing resume: {str(e)}")
-    else:
-        if st.session_state["last_uploaded_file_key"] is not None:
-            st.session_state["last_uploaded_file_key"] = None
-            st.session_state["extracted_skills_str"] = ""
-            st.session_state["resume_text"] = ""
-            st.session_state["c_skills_input_key"] = "Python, SQL, Git"
-            st.rerun()
+        col_cgpa, col_tier = st.columns(2)
+        with col_cgpa:
+            c_cgpa = st.slider("CGPA", min_value=5.0, max_value=10.0, value=8.0, step=0.1)
+        with col_tier:
+            c_tier = st.selectbox("College Tier", options=[1, 2, 3], index=1)
             
-    # Initialize widget key if not in session state
-    if "c_skills_input_key" not in st.session_state:
-        st.session_state["c_skills_input_key"] = st.session_state["extracted_skills_str"] or "Python, SQL, Git"
+        st.markdown("#### 📝 Assessments & Performance")
+        col_cod, col_apt = st.columns(2)
+        with col_cod:
+            c_coding = st.slider("Coding Score (0-100)", min_value=0, max_value=100, value=75)
+        with col_apt:
+            c_aptitude = st.slider("Aptitude Score (0-100)", min_value=0, max_value=100, value=75)
+            
+        c_comm = st.slider("Communication Score (0-10)", min_value=0, max_value=10, value=8)
         
-    c_skills_input = st.text_area(
-        "Technical Skills (separated by commas)",
-        key="c_skills_input_key",
-        placeholder="e.g. HTML, CSS, JavaScript, React, Node.js, SQL",
-        help="Skills extracted from your resume will appear here automatically. You can also manually edit, add, or delete skills directly."
-    )
-    
-    analyze_btn = st.button("🚀 Analyze & Predict Career")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col2:
-    if analyze_btn:
-        if not c_skills_input.strip():
-            st.warning("⚠️ Please enter some technical skills in the text area to analyze.")
-            st.session_state["analysis_results"] = None
+        st.markdown("#### 💼 Experience & History")
+        col_int, col_proj, col_back = st.columns(3)
+        with col_int:
+            c_internships = st.number_input("Internships Done", min_value=0, max_value=5, value=1)
+        with col_proj:
+            c_projects = st.number_input("Projects Done", min_value=0, max_value=10, value=2)
+        with col_back:
+            c_backlogs = st.number_input("Active Backlogs", min_value=0, max_value=5, value=0)
+            
+        c_dsa = st.checkbox("DSA Skill (Strong Data Structures & Algorithms)", value=True)
+        
+        st.markdown("#### 📄 Skills & Resume Source")
+        uploaded_file = st.file_uploader(
+            "Upload Resume (PDF or DOCX)",
+            type=["pdf", "docx"],
+            help="Upload a resume to automatically detect and extract technical skills."
+        )
+        
+        # Process uploaded file and store extracted skills in session state
+        if uploaded_file:
+            file_key = f"{uploaded_file.name}_{uploaded_file.size}"
+            if st.session_state["last_uploaded_file_key"] != file_key:
+                with st.spinner("🔍 Parsing resume and extracting technical skills..."):
+                    try:
+                        resume_profile = analyze_resume_profile(uploaded_file)
+                        skills_extracted = resume_profile.get("skills", [])
+                        extracted_skills_str = ", ".join(skills_extracted)
+                        st.session_state["extracted_skills_str"] = extracted_skills_str
+                        st.session_state["resume_text"] = resume_profile.get("resume_text", "")
+                        st.session_state["last_uploaded_file_key"] = file_key
+                        st.session_state["c_skills_input_key"] = extracted_skills_str
+                        if skills_extracted:
+                            st.toast(f"✅ Extracted {len(skills_extracted)} skills from resume!", icon="🎉")
+                        else:
+                            st.warning("⚠️ No technical skills were automatically detected from the resume text. You can manually enter skills below.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error parsing resume: {str(e)}")
         else:
-            with st.spinner("🔍 Running integrated AI prediction & career mapping..."):
-                try:
-                    # 1. Parse manual skills from the text area (which now acts as the single source of truth)
-                    combined_skills = [s.strip() for s in c_skills_input.split(",") if s.strip()]
-                    combined_skills_str = ", ".join(combined_skills)
-                    combined_skills_set = {s.lower() for s in combined_skills}
-                    resume_text = st.session_state["resume_text"]
-                    
-                    # 3. Compute skill and resume metrics for the Profile ML model inputs
-                    skill_score = round(min(0.5 + (len(combined_skills) * 0.25), 3.5), 2)
-                    resume_score = round(min(max(30.0 + (c_cgpa * 4) + (len(combined_skills) * 2) + (c_internships * 5) + (c_projects * 3) - (c_backlogs * 5), 22.5), 130.0), 2)
-                    
-                    # 4. Predict probabilities using Profile ML Model (Random Forest - 4 classes)
-                    ml_probabilities = {}
-                    max_ml_confidence = 0.0
-                    if ml_model and ml_encoders:
-                        try:
-                            # Encode branch
-                            branch_enc = ml_encoders['branch'].transform([c_branch])[0]
-                            
-                            input_df = pd.DataFrame([[
-                                c_cgpa, branch_enc, c_tier, int(c_dsa), c_coding, c_comm, c_aptitude,
-                                c_internships, c_projects, c_backlogs, resume_score, skill_score
-                            ]], columns=[
-                                'cgpa', 'branch', 'college_tier', 'dsa_skill', 'coding_score',
-                                'communication_score', 'aptitude_score', 'internships', 'projects',
-                                'backlogs', 'resume_score', 'skill_score'
-                            ])
-                            
-                            probabilities = ml_model.predict_proba(input_df)[0]
-                            role_classes = ml_encoders['job_role'].classes_
-                            
-                            for rc, prob in zip(role_classes, probabilities):
-                                ml_probabilities[rc] = prob * 100
-                            max_ml_confidence = max(ml_probabilities.values())
-                        except Exception as ml_err:
-                            st.warning(f"Profile Classifier prediction failed: {str(ml_err)}")
-                            
-                    # 5. Check skills match against existing database roles first for standard roles
-                    from skill_mapper import get_role_skills, save_database
-                    db = load_database()
-                    
-                    db_match_scores = {}
-                    for role, data in db.items():
-                        req_skills = data.get("required_skills", [])
-                        req_set = {s.lower() for s in req_skills}
-                        matched_set = req_set & combined_skills_set
-                        score = (len(matched_set) / len(req_skills)) * 100 if req_skills else 0
-                        db_match_scores[role] = score
-                        
-                    max_db_match = max(db_match_scores.values()) if db_match_scores else 0.0
-                    
-                    # 6. Check if Fallback is needed (standard model AI fallback)
-                    ai_fallback_triggered = False
-                    ai_suggested_role = None
-                    ai_suggested_skills = []
-                    
-                    if max_ml_confidence < 35.0 and max_db_match < 30.0:
-                        st.info("🔍 Profile matches no standard categories. Querying AI Advisor for a custom role suggestion...")
-                        ai_suggestion = suggest_new_role_ai(resume_text or combined_skills_str, combined_skills)
-                        ai_suggested_role = ai_suggestion.get("suggested_role", "Software Engineer").strip()
-                        ai_suggested_skills = ai_suggestion.get("required_skills", [])
-                        
-                        # Save the newly suggested AI role to role_skills.json
-                        if ai_suggested_role not in db:
-                            db[ai_suggested_role] = {"required_skills": ai_suggested_skills}
-                            save_database(db)
-                            db = load_database() # Reload
-                            
-                        # Recalculate matches including the new AI role
-                        db_match_scores[ai_suggested_role] = (len({s.lower() for s in ai_suggested_skills} & combined_skills_set) / len(ai_suggested_skills)) * 100 if ai_suggested_skills else 0
-                        ai_fallback_triggered = True
-                        
-                    # 7. Predict specialized roles using Skills ML Model (TF-IDF + 17 classes)
-                    # Map 17 specialized skills classes to the 4 academic profile standard classes
-                    SPECIALIZED_TO_STANDARD_MAPPING = {
-                        'ACCESSIBILITY SPECIALIST': 'Software Engineer',
-                        'AGILE PROJECT MANAGER': 'Analyst',
-                        'BUSINESS SYSTEMS ANALYST': 'Analyst',
-                        'CLOUD ARCHITECT': 'Software Engineer',
-                        'COMPUTER GRAPHICS ANIMATOR': 'Web Developer',
-                        'DATA ANALYST': 'Analyst',
-                        'DATA MODELER': 'Data Scientist',
-                        'DATA SCIENTIST': 'Data Scientist',
-                        'DEVOPS MANAGER': 'Software Engineer',
-                        'FRAMEWORKS SPECIALIST': 'Software Engineer',
-                        'INFORMATION ARCHITECT': 'Analyst',
-                        'INTERACTION DESIGNER': 'Web Developer',
-                        'MOBILE APP DEVELOPER': 'Software Engineer',
-                        'PRODUCT MANAGER': 'Analyst',
-                        'SECURITY SPECIALIST': 'Software Engineer',
-                        'TECHNICAL ACCOUNT MANAGER': 'Analyst',
-                        'TECHNICAL LEAD': 'Software Engineer'
-                    }
+            if st.session_state["last_uploaded_file_key"] is not None:
+                st.session_state["last_uploaded_file_key"] = None
+                st.session_state["extracted_skills_str"] = ""
+                st.session_state["resume_text"] = ""
+                st.session_state["c_skills_input_key"] = ""
+                st.rerun()
+                
+        # Initialize widget key if not in session state
+        if "c_skills_input_key" not in st.session_state:
+            st.session_state["c_skills_input_key"] = st.session_state.get("extracted_skills_str", "")
+            
+        c_skills_input = st.text_area(
+            "Technical Skills (separated by commas)",
+            key="c_skills_input_key",
+            placeholder="e.g. HTML, CSS, JavaScript, React, Node.js, SQL",
+            help="Skills extracted from your resume will appear here automatically. You can also manually edit, add, or delete skills directly."
+        )
+        
+        analyze_btn = st.button("🚀 Analyze & Predict Career")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-                    skill_recs = []
-                    if skill_model and skill_tfidf and skill_encoder:
-                        skills_vector = skill_tfidf.transform([combined_skills_str])
-                        probabilities = skill_model.predict_proba(skills_vector)[0]
-                        role_classes = skill_encoder.classes_
-                        
-                        skill_probabilities = {}
-                        for rc, prob in zip(role_classes, probabilities):
-                            skill_probabilities[rc] = prob * 100
+
+    with col2:
+        if analyze_btn:
+            if not c_skills_input.strip():
+                st.warning("⚠️ Please enter some technical skills in the text area to analyze.")
+                st.session_state["analysis_results"] = None
+            else:
+                with st.spinner("🔍 Running integrated AI prediction & career mapping..."):
+                    try:
+                        # 1. Parse manual skills from the text area (which now acts as the single source of truth)
+                        combined_skills = [s.strip() for s in c_skills_input.split(",") if s.strip()]
+                        combined_skills_str = ", ".join(combined_skills)
+                        combined_skills_set = {s.lower() for s in combined_skills}
+                        resume_text = st.session_state["resume_text"]
+                    
+                        # 3. Compute skill and resume metrics for the Profile ML model inputs
+                        skill_score = round(min(0.5 + (len(combined_skills) * 0.25), 3.5), 2)
+                        resume_score = round(min(max(30.0 + (c_cgpa * 4) + (len(combined_skills) * 2) + (c_internships * 5) + (c_projects * 3) - (c_backlogs * 5), 22.5), 130.0), 2)
+                    
+                        # 4. Predict probabilities using Profile ML Model (Random Forest - 4 classes)
+                        ml_probabilities = {}
+                        max_ml_confidence = 0.0
+                        if ml_model and ml_encoders:
+                            try:
+                                # Encode branch
+                                branch_enc = ml_encoders['branch'].transform([c_branch])[0]
                             
-                        for role in role_classes:
-                            req_skills = get_role_skills(role)
+                                input_df = pd.DataFrame([[
+                                    c_cgpa, branch_enc, c_tier, int(c_dsa), c_coding, c_comm, c_aptitude,
+                                    c_internships, c_projects, c_backlogs, resume_score, skill_score
+                                ]], columns=[
+                                    'cgpa', 'branch', 'college_tier', 'dsa_skill', 'coding_score',
+                                    'communication_score', 'aptitude_score', 'internships', 'projects',
+                                    'backlogs', 'resume_score', 'skill_score'
+                                ])
+                            
+                                probabilities = ml_model.predict_proba(input_df)[0]
+                                role_classes = ml_encoders['job_role'].classes_
+                            
+                                for rc, prob in zip(role_classes, probabilities):
+                                    ml_probabilities[rc] = prob * 100
+                                max_ml_confidence = max(ml_probabilities.values())
+                            except Exception as ml_err:
+                                st.warning(f"Profile Classifier prediction failed: {str(ml_err)}")
+                            
+                        # 5. Check skills match against existing database roles first for standard roles
+                        from skill_mapper import get_role_skills, save_database
+                        db = load_database()
+                    
+                        db_match_scores = {}
+                        for role, data in db.items():
+                            req_skills = data.get("required_skills", [])
                             req_set = {s.lower() for s in req_skills}
                             matched_set = req_set & combined_skills_set
-                            
-                            skill_match_score = (len(matched_set) / len(req_skills)) * 100 if req_skills else 0
-                            skills_ml_score = skill_probabilities.get(role, 0.0)
-                            
-                            # Connect academic features (Placement Predictor probability)
-                            mapped_std_role = SPECIALIZED_TO_STANDARD_MAPPING.get(role, "Software Engineer")
-                            profile_prob = ml_probabilities.get(mapped_std_role, 0.0) if ml_probabilities else 0.0
-                            
-                            # Calculate final combined match score: 40% Skills Model Conf + 30% Skill Alignment Gap + 30% Academic profile suitability
-                            combined_score = round((0.4 * skills_ml_score) + (0.3 * skill_match_score) + (0.3 * profile_prob), 2)
-                            
-                            skill_recs.append({
-                                "role": role,
-                                "score": combined_score,
-                                "skills_ml_score": round(skills_ml_score, 2),
-                                "skill_score": round(skill_match_score, 2),
-                                "profile_score": round(profile_prob, 2),
-                                "required_skills": req_skills,
-                                "matched_skills": [s for s in req_skills if s.lower() in matched_set],
-                                "missing_skills": [s for s in req_skills if s.lower() not in matched_set]
-                            })
-                        skill_recs = sorted(skill_recs, key=lambda x: x["score"], reverse=True)
+                            score = (len(matched_set) / len(req_skills)) * 100 if req_skills else 0
+                            db_match_scores[role] = score
                         
-                    st.session_state["analysis_results"] = {
-                        "combined_skills": combined_skills,
-                        "skill_recs": skill_recs,
-                        "ml_probabilities": ml_probabilities,
-                        "db_match_scores": db_match_scores,
-                        "ai_fallback_triggered": ai_fallback_triggered,
-                        "ai_suggested_role": ai_suggested_role
-                    }
-                except Exception as e:
-                    st.error(f"❌ Analysis failed: {str(e)}")
-                    st.session_state["analysis_results"] = None
-
-    if st.session_state["analysis_results"] is not None:
-        results = st.session_state["analysis_results"]
-        combined_skills = results["combined_skills"]
-        skill_recs = results["skill_recs"]
-        ml_probabilities = results["ml_probabilities"]
-        db_match_scores = results["db_match_scores"]
-        ai_fallback_triggered = results["ai_fallback_triggered"]
-        ai_suggested_role = results["ai_suggested_role"]
-
-        st.markdown("""
-        <div style="margin-top: 10px; margin-bottom: 20px;">
-            <h3 style="margin-bottom: 5px; color: #34d399 !important;">✍️ Recommended Career Paths</h3>
-            <p style="color: #9ca3af; font-size: 0.9rem; margin-top: 0;">
-                Top predicted career paths based on your academic profile, assessment scores, and technical skills (using integrated Random Forest models & TF-IDF mapping).
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if skill_recs:
-            col_c1, col_c2, col_c3 = st.columns(3)
-            cols = [col_c1, col_c2, col_c3]
-            
-            for idx, rec in enumerate(skill_recs[:3]):
-                role_name = rec["role"]
-                score = rec["score"]
-                sk_ml = rec["skills_ml_score"]
-                sk_sc = rec["skill_score"]
-                pr_sc = rec["profile_score"]
-                
-                parent_role = SUB_TO_PARENT_ROLE.get(role_name.upper())
-                parent_html = f'<div style="font-size: 0.82rem; color: #a5b4fc; margin-top: -5px; margin-bottom: 8px;">Sub-role of {parent_role}</div>' if parent_role else ""
-                
-                with cols[idx]:
-                    st.markdown(f"""
-                    <div class="glass-card" style="border-color: rgba(16, 185, 129, 0.4); min-height: 220px; padding: 20px; margin-bottom: 15px;">
-                        <span style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #34d399; font-weight: 700;">🏆 #{idx+1} Recommendation</span>
-                        <h3 style="margin: 10px 0 5px 0; font-size: 1.4rem; color: #6ee7b7 !important;">{role_name}</h3>
-                        {parent_html}
-                        <p style="color: #e5e7eb; font-size: 0.95rem; margin-bottom: 12px;">Combined Fit: <strong>{score}% Match</strong></p>
-                        <p style="color: #9ca3af; font-size: 0.8rem; line-height: 1.4;">
-                            Academic Fit: {pr_sc}%<br/>
-                            Skill Match: {sk_sc}%<br/>
-                            Model Conf: {sk_ml}%
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        max_db_match = max(db_match_scores.values()) if db_match_scores else 0.0
                     
-                    with st.expander(f"🌐 Why & What Insights for #{idx+1}", expanded=(idx == 0)):
-                        with st.spinner("🌐 Fetching live insights..."):
-                            try:
-                                from tavily_helper import get_career_why_and_what
-                                
-                                @st.cache_data(ttl=3600)
-                                def fetch_why_what_cached(role, skills_tuple):
-                                    return get_career_why_and_what(role, list(skills_tuple))
-                                    
-                                insights = fetch_why_what_cached(role_name, tuple(combined_skills))
-                                
-                                st.markdown(f"**❓ What it is:**\n{insights.get('what', 'N/A')}")
-                                st.markdown(f"**🎯 Why suggest:**\n{insights.get('why', 'N/A')}")
-                            except Exception as t_err:
-                                st.error(f"Failed to fetch insights: {str(t_err)}")
-        else:
-            st.info("Career Path Recommender returned no results.")
+                        # 6. Check if Fallback is needed (standard model AI fallback)
+                        ai_fallback_triggered = False
+                        ai_suggested_role = None
+                        ai_suggested_skills = []
+                    
+                        if max_ml_confidence < 35.0 and max_db_match < 30.0:
+                            st.info("🔍 Profile matches no standard categories. Querying AI Advisor for a custom role suggestion...")
+                            ai_suggestion = suggest_new_role_ai(resume_text or combined_skills_str, combined_skills)
+                            ai_suggested_role = ai_suggestion.get("suggested_role", "Software Engineer").strip()
+                            ai_suggested_skills = ai_suggestion.get("required_skills", [])
+                        
+                            # Save the newly suggested AI role to role_skills.json
+                            if ai_suggested_role not in db:
+                                db[ai_suggested_role] = {"required_skills": ai_suggested_skills}
+                                save_database(db)
+                                db = load_database() # Reload
+                            
+                            # Recalculate matches including the new AI role
+                            db_match_scores[ai_suggested_role] = (len({s.lower() for s in ai_suggested_skills} & combined_skills_set) / len(ai_suggested_skills)) * 100 if ai_suggested_skills else 0
+                            ai_fallback_triggered = True
+                        
+                        # 7. Predict specialized roles using Skills ML Model (TF-IDF + 17 classes)
+                        # Map 17 specialized skills classes to the 4 academic profile standard classes
+                        SPECIALIZED_TO_STANDARD_MAPPING = {
+                            'ACCESSIBILITY SPECIALIST': 'Software Engineer',
+                            'AGILE PROJECT MANAGER': 'Analyst',
+                            'BUSINESS SYSTEMS ANALYST': 'Analyst',
+                            'CLOUD ARCHITECT': 'Software Engineer',
+                            'COMPUTER GRAPHICS ANIMATOR': 'Web Developer',
+                            'DATA ANALYST': 'Analyst',
+                            'DATA MODELER': 'Data Scientist',
+                            'DATA SCIENTIST': 'Data Scientist',
+                            'DEVOPS MANAGER': 'Software Engineer',
+                            'FRAMEWORKS SPECIALIST': 'Software Engineer',
+                            'INFORMATION ARCHITECT': 'Analyst',
+                            'INTERACTION DESIGNER': 'Web Developer',
+                            'MOBILE APP DEVELOPER': 'Software Engineer',
+                            'PRODUCT MANAGER': 'Analyst',
+                            'SECURITY SPECIALIST': 'Software Engineer',
+                            'TECHNICAL ACCOUNT MANAGER': 'Analyst',
+                            'TECHNICAL LEAD': 'Software Engineer'
+                        }
+
+                        skill_recs = []
+                        if skill_model and skill_tfidf and skill_encoder:
+                            skills_vector = skill_tfidf.transform([combined_skills_str])
+                            probabilities = skill_model.predict_proba(skills_vector)[0]
+                            role_classes = skill_encoder.classes_
+                        
+                            skill_probabilities = {}
+                            for rc, prob in zip(role_classes, probabilities):
+                                skill_probabilities[rc] = prob * 100
+                            
+                            for role in role_classes:
+                                req_skills = get_role_skills(role)
+                                req_set = {s.lower() for s in req_skills}
+                                matched_set = req_set & combined_skills_set
+                            
+                                skill_match_score = (len(matched_set) / len(req_skills)) * 100 if req_skills else 0
+                                skills_ml_score = skill_probabilities.get(role, 0.0)
+                            
+                                # Connect academic features (Placement Predictor probability)
+                                mapped_std_role = SPECIALIZED_TO_STANDARD_MAPPING.get(role, "Software Engineer")
+                                profile_prob = ml_probabilities.get(mapped_std_role, 0.0) if ml_probabilities else 0.0
+                            
+                                # Calculate final combined match score: 40% Skills Model Conf + 30% Skill Alignment Gap + 30% Academic profile suitability
+                                combined_score = round((0.4 * skills_ml_score) + (0.3 * skill_match_score) + (0.3 * profile_prob), 2)
+                            
+                                skill_recs.append({
+                                    "role": role,
+                                    "score": combined_score,
+                                    "skills_ml_score": round(skills_ml_score, 2),
+                                    "skill_score": round(skill_match_score, 2),
+                                    "profile_score": round(profile_prob, 2),
+                                    "required_skills": req_skills,
+                                    "matched_skills": [s for s in req_skills if s.lower() in matched_set],
+                                    "missing_skills": [s for s in req_skills if s.lower() not in matched_set]
+                                })
+                            # 8. Dual ML + LangChain Consensus Engine & Central Neural Sync Bridge
+                        try:
+                            from langchain_engine import compute_dual_ml_langchain_consensus, sync_langchain_consensus_to_all_features
+                            profile_dict = {
+                                "branch": c_branch, "cgpa": c_cgpa, "college_tier": c_tier,
+                                "coding_score": c_coding, "aptitude_score": c_aptitude,
+                                "communication_score": c_comm, "internships": c_internships,
+                                "projects": c_projects, "backlogs": c_backlogs, "dsa_skill": c_dsa
+                            }
+                            consensus_profile = compute_dual_ml_langchain_consensus(
+                                ml_recs=skill_recs,
+                                user_skills=combined_skills,
+                                profile_data=profile_dict,
+                                resume_text=st.session_state.get("resume_text", "")
+                            )
+                            skill_recs = consensus_profile.get("consensus_leaderboard", skill_recs)
+                            sync_langchain_consensus_to_all_features(st.session_state, consensus_profile)
+                            st.session_state["consensus_profile"] = consensus_profile
+                        except Exception as lc_err:
+                            logger.warning(f"Dual consensus calculation warning: {lc_err}")
+
+                        st.session_state["analysis_results"] = {
+                            "combined_skills": combined_skills,
+                            "skill_recs": skill_recs,
+                            "ml_probabilities": ml_probabilities,
+                            "db_match_scores": db_match_scores,
+                            "ai_fallback_triggered": ai_fallback_triggered,
+                            "ai_suggested_role": ai_suggested_role
+                        }
+                    except Exception as e:
+                        st.error(f"❌ Analysis failed: {str(e)}")
+                        st.session_state["analysis_results"] = None
+
+
+
+        if st.session_state["analysis_results"] is not None:
+            results = st.session_state["analysis_results"]
+            combined_skills = results["combined_skills"]
+            skill_recs = results["skill_recs"]
+            ml_probabilities = results["ml_probabilities"]
+            db_match_scores = results["db_match_scores"]
+            ai_fallback_triggered = results["ai_fallback_triggered"]
+            ai_suggested_role = results["ai_suggested_role"]
+
+            consensus = st.session_state.get("consensus_profile")
+            if consensus:
+                top_c_role = consensus.get("top_consensus_role", "Software Engineer")
+                is_aligned = consensus.get("is_aligned", True)
+                c_verdict = consensus.get("discrepancy_verdict", "")
             
-        st.markdown("### 📊 Career Path Match Rankings")
-        st.write("Rankings for all career paths predicted using integrated academic profile & technical skills:")
-        if skill_recs:
-            for idx, rec in enumerate(skill_recs[:10]):
-                role = rec["role"]
-                score = rec["score"]
-                sk_sc = rec["skill_score"]
-                pr_sc = rec["profile_score"]
-                
-                is_top = (idx == 0)
-                bar_class = "rec-bar-fill rec-bar-fill-top" if is_top else "rec-bar-fill"
-                
-                p_role = SUB_TO_PARENT_ROLE.get(role.upper())
-                role_display = f"{role} <span style='font-size: 0.85rem; color: #a5b4fc;'>(Sub-role of {p_role})</span>" if p_role else role
-                
                 st.markdown(f"""
-                <div class="rec-item">
-                    <div class="rec-label-container">
-                        <span>{role_display}</span>
-                        <span style="color: #9ca3af; font-size: 0.85rem;">(Academic Fit: {pr_sc}% | Skill Match: {sk_sc}% | Model Conf: {sk_ml}%)</span>
-                        <span>{score}% Match</span>
+                <div class="glass-card" style="border: 1.5px solid #6366f1; padding: 22px; margin-bottom: 24px; background: rgba(30, 27, 75, 0.6);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <span style="background: rgba(99, 102, 241, 0.25); color: #a5b4fc; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem;">🧠 DUAL ML + LANGCHAIN CONSENSUS RESULT</span>
+                            <h2 style="margin: 10px 0 6px 0; color: #818cf8 !important; font-size: 1.8rem;">Top Consensus Role: {top_c_role}</h2>
+                            <p style="color: #e5e7eb; font-size: 0.95rem; margin-bottom: 8px;">{c_verdict}</p>
+                        </div>
+                        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; padding: 8px 16px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #34d399;">{consensus.get('consensus_score')}%</div>
+                            <div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase;">Consensus Fit</div>
+                        </div>
                     </div>
-                    <div class="rec-bar-bg">
-                        <div class="{bar_class}" style="width: {score}%;"></div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+                        <div style="font-size: 0.83rem; background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 6px; color: #cbd5e1;">🤖 <strong>Local ML Model Pick:</strong> {consensus.get('ml_top_pick')}</div>
+                        <div style="font-size: 0.83rem; background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 6px; color: #cbd5e1;">⚡ <strong>LangChain AI Engine Pick:</strong> {consensus.get('langchain_top_pick')}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("No recommendations found.")
-            
-        st.markdown("### 🎯 ATS Score & Skills Gap Details")
-        
-        all_recs_map = {}
-        for rec in skill_recs:
-            all_recs_map[rec["role"]] = rec
-            
-        selected_role = st.selectbox(
-            "Select any recommended role to view details and ATS gap analysis:",
-            options=list(all_recs_map.keys()),
-            format_func=lambda x: f"{x} (Sub-role of {SUB_TO_PARENT_ROLE.get(x.upper())})" if SUB_TO_PARENT_ROLE.get(x.upper()) else x
-        )
-        
-        selected_rec = all_recs_map[selected_role]
-        ats_score = selected_rec["skill_score"]
-        req_skills = selected_rec["required_skills"]
-        matched = selected_rec["matched_skills"]
-        missing = selected_rec["missing_skills"]
-        
-        if ats_score >= 75:
-            score_class = "score-high"
-            score_msg = "Excellent Match"
-            score_color = "#10b981"
-        elif ats_score >= 50:
-            score_class = "score-mid"
-            score_msg = "Good Match"
-            score_color = "#f59e0b"
-        else:
-            score_class = "score-low"
-            score_msg = "Needs Improvement"
-            score_color = "#ef4444"
-            
-        col_m1, col_m2 = st.columns([1, 2], gap="medium")
-        with col_m1:
-            st.markdown(f"""
-            <div style="text-align: center; margin: 20px 0;">
-                <div class="circular-progress">
-                    <svg viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="42" stroke="rgba(255, 255, 255, 0.05)" stroke-width="8" fill="transparent" />
-                        <circle cx="50" cy="50" r="42" stroke="{score_color}" stroke-width="8" fill="transparent"
-                                stroke-dasharray="263.89" stroke-dashoffset="{263.89 * (1 - ats_score/100)}"
-                                stroke-linecap="round" style="transform: rotate(-90deg); transform-origin: 50px 50px; transition: stroke-dashoffset 0.5s ease;" />
-                    </svg>
-                    <div class="circular-progress-text">
-                        <span style="font-size: 1.8rem; font-weight: 700; color: #fff;">{ats_score:.0f}%</span>
-                        <span style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase;">Match Score</span>
-                    </div>
-                </div>
-                <div class="{score_class}" style="margin-top: 15px;">
-                    {score_msg}
-                </div>
+
+            st.markdown("""
+            <div style="margin-top: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 5px; color: #34d399 !important;">✍️ Recommended Career Paths (Combined ML Model + LangChain Engine)</h3>
+                <p style="color: #9ca3af; font-size: 0.9rem; margin-top: 0;">
+                    Top predicted career paths synthesized from a <strong>combined analysis of Local ML Models</strong> (Random Forest & TF-IDF classifiers) <strong>AND the LangChain Intelligence Engine</strong>.
+                </p>
             </div>
             """, unsafe_allow_html=True)
+        
+            if skill_recs:
+
+                col_c1, col_c2, col_c3 = st.columns(3)
+                cols = [col_c1, col_c2, col_c3]
             
-        with col_m2:
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-                "✨ Skills Gap Analysis", 
-                "📋 Required Role Skills", 
-                "📝 Your Extracted/Entered Skills",
-                "📈 Real-Time Market Insights (Tavily)",
-                "💼 Apply to Jobs/Internships",
-                "📚 Course Generator (Ollama)",
-                "⚡ ATS Resume Tailorer (STAR)",
-                "🎙️ AI Mock Interview Simulator"
-            ])
+                for idx, rec in enumerate(skill_recs[:3]):
+                    role_name = rec["role"]
+                    score = rec["score"]
+                    sk_ml = rec["skills_ml_score"]
+                    sk_sc = rec["skill_score"]
+                    pr_sc = rec["profile_score"]
+                
+                    parent_role = SUB_TO_PARENT_ROLE.get(role_name.upper())
+                    parent_html = f'<div style="font-size: 0.82rem; color: #a5b4fc; margin-top: -5px; margin-bottom: 8px;">Sub-role of {parent_role}</div>' if parent_role else ""
+                
+                    with cols[idx]:
+                        st.markdown(f"""
+                        <div class="glass-card" style="border-color: rgba(16, 185, 129, 0.4); min-height: 220px; padding: 20px; margin-bottom: 15px;">
+                            <span style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #34d399; font-weight: 700;">🏆 #{idx+1} Consensus Recommendation</span>
+                            <h3 style="margin: 10px 0 5px 0; font-size: 1.4rem; color: #6ee7b7 !important;">{role_name}</h3>
+                            {parent_html}
+                            <p style="color: #e5e7eb; font-size: 0.95rem; margin-bottom: 12px;">Combined Consensus Fit: <strong>{score}% Match</strong></p>
+                            <p style="color: #9ca3af; font-size: 0.8rem; line-height: 1.4;">
+                                🤖 Academic ML Fit: {pr_sc}%<br/>
+                                📊 Skill Match Score: {sk_sc}%<br/>
+                                ⚡ Model & AI Conf: {sk_ml}%
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                        with st.expander(f"🌐 Why & What Insights for #{idx+1}", expanded=(idx == 0)):
+                            with st.spinner("🌐 Fetching live insights..."):
+                                try:
+                                    insights = fetch_why_what_cached(role_name, tuple(combined_skills))
+                                    st.markdown(f"**❓ What it is:**\n{insights.get('what', 'N/A')}")
+                                    st.markdown(f"**🎯 Why suggest:**\n{insights.get('why', 'N/A')}")
+                                except Exception as t_err:
+                                    st.error(f"Failed to fetch insights: {str(t_err)}")
+            else:
+                st.info("Career Path Recommender returned no results.")
             
-            with tab1:
-                p_role = SUB_TO_PARENT_ROLE.get(selected_role.upper())
-                parent_suffix = f" (specialized sub-role under **{p_role}**)" if p_role else ""
-                st.write(f"Compare your skills against the requirements for **{selected_role}**{parent_suffix}:")
+            st.markdown("### 📊 Career Path Consensus Rankings")
+            st.write("Rankings for all career paths synthesized from combined analysis of academic profile, technical skills ML models, and LangChain AI engine:")
+            if skill_recs:
+                for idx, rec in enumerate(skill_recs[:10]):
+                    role = rec["role"]
+                    score = rec["score"]
+                    sk_sc = rec["skill_score"]
+                    pr_sc = rec["profile_score"]
+                    sk_ml = rec["skills_ml_score"]
                 
-                st.markdown("#### ✅ Matched Technical Skills")
-                if matched:
-                    badges = "".join([f'<span class="badge badge-matched">{s}</span>' for s in matched])
-                    st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
-                else:
-                    st.info("No matching skills found for this role.")
-                    
-                st.markdown("#### ❌ Missing Critical Skills")
-                if missing:
-                    badges = "".join([f'<span class="badge badge-missing">{s}</span>' for s in missing])
-                    st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
-                    st.warning(f"💡 *Actionable Tip: Revise your resume or plan coursework to cover these missing skills.*")
-                else:
-                    st.success("Great! Your skills list covers all the expectations for this role.")
-                    
-            with tab2:
-                st.write(f"The top technical skills expected for **{selected_role}**:")
-                if req_skills:
-                    badges = "".join([f'<span class="badge badge-normal">{s}</span>' for s in req_skills])
-                    st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
-                else:
-                    st.warning("No expected skills list is cached for this role.")
-                    
-            with tab3:
-                st.write("These skills were parsed from your resume or manually input:")
-                if combined_skills:
-                    badges = "".join([f'<span class="badge badge-normal">{s}</span>' for s in combined_skills])
-                    st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
-                else:
-                    st.info("No skills are registered.")
-                    
-            with tab4:
-                st.write(f"### 📈 Real-Time Job Market Insights for **{selected_role}**")
-                st.write("Fetching live hiring trends, salary ranges, certifications, project ideas, and interview questions directly from current web sources:")
+                    is_top = (idx == 0)
+                    bar_class = "rec-bar-fill rec-bar-fill-top" if is_top else "rec-bar-fill"
                 
-                with st.spinner("🌐 Fetching live search data from Tavily..."):
-                    try:
-                        from tavily_helper import get_job_market_insights
+                    p_role = SUB_TO_PARENT_ROLE.get(role.upper())
+                    role_display = f"{role} <span style='font-size: 0.85rem; color: #a5b4fc;'>(Sub-role of {p_role})</span>" if p_role else role
+                
+                    st.markdown(f"""
+                    <div class="rec-item">
+                        <div class="rec-label-container">
+                            <span>{role_display}</span>
+                            <span style="color: #9ca3af; font-size: 0.85rem;">(Academic Fit: {pr_sc}% | Skill Match: {sk_sc}% | ML & LangChain Conf: {sk_ml}%)</span>
+                            <span>{score}% Consensus Fit</span>
+                        </div>
+                        <div class="rec-bar-bg">
+                            <div class="{bar_class}" style="width: {score}%;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No recommendations found.")
+            
+            st.markdown("### 🎯 ATS Score & Skills Gap Details")
+        
+            all_recs_map = {}
+            for rec in skill_recs:
+                all_recs_map[rec["role"]] = rec
+            
+            selected_role = st.selectbox(
+                "Select any recommended role to view details and ATS gap analysis:",
+                options=list(all_recs_map.keys()),
+                format_func=lambda x: f"{x} (Sub-role of {SUB_TO_PARENT_ROLE.get(x.upper())})" if SUB_TO_PARENT_ROLE.get(x.upper()) else x
+            )
+        
+            selected_rec = all_recs_map[selected_role]
+            ats_score = selected_rec["skill_score"]
+            req_skills = selected_rec["required_skills"]
+            matched = selected_rec["matched_skills"]
+            missing = selected_rec["missing_skills"]
+        
+            if ats_score >= 75:
+                score_class = "score-high"
+                score_msg = "Excellent Match"
+                score_color = "#10b981"
+            elif ats_score >= 50:
+                score_class = "score-mid"
+                score_msg = "Good Match"
+                score_color = "#f59e0b"
+            else:
+                score_class = "score-low"
+                score_msg = "Needs Improvement"
+                score_color = "#ef4444"
+            
+            col_m1, col_m2 = st.columns([1, 2], gap="medium")
+            with col_m1:
+                st.markdown(f"""
+                <div style="text-align: center; margin: 20px 0;">
+                    <div class="circular-progress">
+                        <svg viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="42" stroke="rgba(255, 255, 255, 0.05)" stroke-width="8" fill="transparent" />
+                            <circle cx="50" cy="50" r="42" stroke="{score_color}" stroke-width="8" fill="transparent"
+                                    stroke-dasharray="263.89" stroke-dashoffset="{263.89 * (1 - ats_score/100)}"
+                                    stroke-linecap="round" style="transform: rotate(-90deg); transform-origin: 50px 50px; transition: stroke-dashoffset 0.5s ease;" />
+                        </svg>
+                        <div class="circular-progress-text">
+                            <span style="font-size: 1.8rem; font-weight: 700; color: #fff;">{ats_score:.0f}%</span>
+                            <span style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase;">Match Score</span>
+                        </div>
+                    </div>
+                    <div class="{score_class}" style="margin-top: 15px;">
+                        {score_msg}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_m2:
+                tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+                    "✨ Skills Gap Analysis", 
+                    "📋 Required Role Skills", 
+                    "📝 Your Extracted/Entered Skills",
+                    "📈 Real-Time Market Insights (Tavily)",
+                    "💼 Apply to Jobs/Internships",
+                    "📚 Course Generator (Ollama)",
+                    "⚡ ATS Resume Tailorer (STAR)"
+                ])
+            
+                with tab1:
+                    p_role = SUB_TO_PARENT_ROLE.get(selected_role.upper())
+                    parent_suffix = f" (specialized sub-role under **{p_role}**)" if p_role else ""
+                    st.write(f"Compare your skills against the requirements for **{selected_role}**{parent_suffix}:")
+                
+                    st.markdown("#### ✅ Matched Technical Skills")
+                    if matched:
+                        badges = "".join([f'<span class="badge badge-matched">{s}</span>' for s in matched])
+                        st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+                    else:
+                        st.info("No matching skills found for this role.")
+                    
+                    st.markdown("#### ❌ Missing Critical Skills")
+                    if missing:
+                        badges = "".join([f'<span class="badge badge-missing">{s}</span>' for s in missing])
+                        st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+                        st.warning(f"💡 *Actionable Tip: Revise your resume or plan coursework to cover these missing skills.*")
+                    else:
+                        st.success("Great! Your skills list covers all the expectations for this role.")
+                    
+                with tab2:
+                    st.write(f"The top technical skills expected for **{selected_role}**:")
+                    if req_skills:
+                        badges = "".join([f'<span class="badge badge-normal">{s}</span>' for s in req_skills])
+                        st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+                    else:
+                        st.warning("No expected skills list is cached for this role.")
+                    
+                with tab3:
+                    st.write("These skills were parsed from your resume or manually input:")
+                    if combined_skills:
+                        badges = "".join([f'<span class="badge badge-normal">{s}</span>' for s in combined_skills])
+                        st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+                    else:
+                        st.info("No skills are registered.")
+                    
+                with tab4:
+                    st.write(f"### 📈 Real-Time Job Market Insights for **{selected_role}**")
+                    st.caption("⚡ Powered by LangChain Web Intelligence & Tavily Live Search")
+                    st.write("Fetching live hiring trends, salary ranges, certifications, project ideas, and interview questions directly from current web sources:")
+                
+                    with st.spinner("🌐 Querying LangChain & Tavily real-time market search..."):
+                        try:
+                            insights = fetch_cached_insights(selected_role)
                         
-                        @st.cache_data(ttl=3600)
-                        def fetch_cached_insights(role):
-                            return get_job_market_insights(role)
-                            
-                        insights = fetch_cached_insights(selected_role)
+                            avg_sal = insights.get('average_salary', 'N/A')
+                            mkt_tr = insights.get('market_trends', 'N/A')
+                            sal_breakdown = insights.get('salary_breakdown', {})
                         
-                        col_sal, col_tr = st.columns(2)
-                        with col_sal:
                             st.markdown(f"""
-                            <div class="glass-card" style="padding: 20px; border-color: rgba(59, 130, 246, 0.3);">
-                                <h5 style="margin-top: 0; color: #60a5fa; margin-bottom: 8px;">💰 Average Compensation</h5>
-                                <p style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0;">{insights.get('average_salary', 'N/A')}</p>
+                            <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+                                <div class="glass-card" style="flex: 1; min-width: 240px; padding: 20px; border-color: rgba(59, 130, 246, 0.3); margin-bottom: 0;">
+                                    <h5 style="margin-top: 0; color: #60a5fa; margin-bottom: 8px;">💰 Average Compensation</h5>
+                                    <p style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;">{avg_sal}</p>
+                                    {"".join([f'<div style="font-size:0.82rem; color:#9ca3af;"><strong>{k.replace("_"," ").title()}:</strong> {v}</div>' for k,v in sal_breakdown.items()]) if sal_breakdown else ''}
+                                </div>
+                                <div class="glass-card" style="flex: 1; min-width: 240px; padding: 20px; border-color: rgba(99, 102, 241, 0.3); margin-bottom: 0;">
+                                    <h5 style="margin-top: 0; color: #818cf8; margin-bottom: 8px;">🚀 2026 Market Hiring Trends</h5>
+                                    <p style="font-size: 0.9rem; margin-bottom: 0; line-height: 1.4;">{mkt_tr}</p>
+                                </div>
                             </div>
                             """, unsafe_allow_html=True)
-                        with col_tr:
-                            st.markdown(f"""
-                            <div class="glass-card" style="padding: 20px; border-color: rgba(99, 102, 241, 0.3);">
-                                <h5 style="margin-top: 0; color: #818cf8; margin-bottom: 8px;">🚀 Market Hiring Trends</h5>
-                                <p style="font-size: 0.9rem; margin-bottom: 0; line-height: 1.4;">{insights.get('market_trends', 'N/A')}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
                             
-                        col_comp, col_cert = st.columns(2)
-                        with col_comp:
                             st.markdown("#### 🏢 Active Hiring Companies")
                             companies = insights.get("top_companies", [])
                             if companies:
@@ -833,8 +912,8 @@ with col2:
                                     st.markdown(f"- **{comp}**")
                             else:
                                 st.info("No active hiring companies listed.")
-                                
-                        with col_cert:
+
+                            
                             st.markdown("#### 🎓 Recommended Certifications")
                             certs = insights.get("certifications", [])
                             if certs:
@@ -842,471 +921,386 @@ with col2:
                                     st.markdown(f"- {cert}")
                             else:
                                 st.info("No recommended certifications found.")
-                                
-                        st.markdown("#### 💡 Recommended Practical Projects")
-                        projects = insights.get("project_ideas", [])
-                        if projects:
-                            for proj in projects:
-                                st.markdown(proj if proj.startswith("-") else f"- {proj}")
-                        else:
-                            st.info("No project recommendations listed.")
-                            
-                        st.markdown("#### 🗣️ Interview Prep Topics")
-                        tips = insights.get("interview_tips", [])
-                        if tips:
-                            for tip in tips:
-                                st.markdown(tip if tip.startswith("-") else f"- {tip}")
-                        else:
-                            st.info("No interview preparation topics listed.")
-                            
-                        st.markdown("#### 🗺️ Next Steps Learning Roadmap")
-                        st.write(insights.get("learning_roadmap", "Not available."))
-                        
-                    except Exception as t_err:
-                        st.error(f"Failed to fetch market insights: {str(t_err)}")
-                        
-            with tab5:
-                st.write(f"### 💼 Live Jobs & Internships for **{selected_role}**")
-                st.write("Browse current openings scraped in real-time from LinkedIn, Naukri.com, Indeed, Internshala, and other hiring portals:")
-                
-                with st.spinner("🔍 Querying job boards via Tavily..."):
-                    try:
-                        from tavily_helper import get_active_jobs_and_internships
-                        
-                        @st.cache_data(ttl=1800)
-                        def fetch_live_job_listings(role):
-                            return get_active_jobs_and_internships(role)
-                            
-                        jobs_data = fetch_live_job_listings(selected_role)
-                        listings = jobs_data.get("listings", [])
-                        
-                        if listings:
-                            # Count jobs vs internships
-                            jobs_count = sum(1 for j in listings if j.get("type", "Job") == "Job")
-                            intern_count = sum(1 for j in listings if j.get("type", "") == "Internship")
-                            st.markdown(f"Found **{len(listings)}** openings ({jobs_count} Jobs, {intern_count} Internships)")
-                            
-                            for idx, job in enumerate(listings):
-                                title = job.get("title", "N/A")
-                                company = job.get("company", "N/A")
-                                platform = job.get("platform", "Direct Link")
-                                job_type = job.get("type", "Job")
-                                url = job.get("url", "#")
-                                desc = job.get("description", "")
-                                
-                                # Color code by type
-                                if job_type == "Internship":
-                                    type_bg = "rgba(168, 85, 247, 0.15)"
-                                    type_color = "#c084fc"
-                                    border_color = "#a855f7"
-                                else:
-                                    type_bg = "rgba(16, 185, 129, 0.15)"
-                                    type_color = "#6ee7b7"
-                                    border_color = "#10b981"
-                                
-                                st.markdown(f"""
-                                <div class="glass-card" style="padding: 15px; margin-bottom: 12px; border-left: 4px solid {border_color};">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px; flex-wrap: wrap; gap: 6px;">
-                                        <h5 style="margin: 0; font-size: 1.05rem; color: {type_color} !important;">{title}</h5>
-                                        <div style="display: flex; gap: 6px;">
-                                            <span style="font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; background: {type_bg}; color: {type_color}; font-weight: 700;">{job_type}</span>
-                                            <span style="font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; background: rgba(59, 130, 246, 0.1); color: #60a5fa; font-weight: 600;">{platform}</span>
-                                        </div>
-                                    </div>
-                                    <p style="margin: 4px 0 8px 0; font-size: 0.9rem; color: #e5e7eb;">🏢 <strong>{company}</strong></p>
-                                    <p style="margin: 0 0 10px 0; font-size: 0.83rem; color: #9ca3af; line-height: 1.4;">{desc}</p>
-                                    <a href="{url}" target="_blank" style="text-decoration: none; display: inline-block; font-size: 0.8rem; font-weight: 700; padding: 6px 14px; border-radius: 6px; color: #064e3b; background-color: #34d399; transition: all 0.2s;">🔗 Apply on {platform}</a>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.info("No active jobs or internships found for this role at the moment. Please try searching again later.")
-                    except Exception as jobs_err:
-                        st.error(f"Failed to fetch job opportunities: {str(jobs_err)}")
-                        
-            with tab6:
-                st.write("### 📚 AI Course Generator & Educational Assistant")
-                st.write("Generate a personalized week-by-week learning roadmap (via Groq AI), search research resources (via Tavily), and discuss topics with an AI Assistant.")
-                
-                # Check health of local Ollama server
-                @st.cache_resource(ttl=30)
-                def get_ollama_status():
-                    try:
-                        return check_ollama_health()
-                    except Exception as e:
-                        return {"status": "disconnected", "error": str(e)}
 
-                health_data = get_ollama_status()
-                ollama_connected = (health_data.get("status") == "connected")
-                
-                # Populate learning goal options from selected role or missing skills
-                goal_options = []
-                if selected_role:
-                    goal_options.append(f"Learn {selected_role}")
-                if missing:
-                    for ms in missing:
-                        goal_options.append(f"Master {ms}")
-                goal_options.append("Custom Goal...")
-                
-                st.markdown("#### 🎯 Choose Learning Goal")
-                goal_choice = st.selectbox(
-                    "Select a goal based on your recommendations or enter a custom topic:",
-                    options=goal_options,
-                    index=0
-                )
-                
-                if goal_choice == "Custom Goal...":
-                    learning_goal = st.text_input("Enter custom learning goal:", value="Learn Python Programming")
-                else:
-                    if goal_choice.startswith("Learn "):
-                        learning_goal = goal_choice[6:]
-                    elif goal_choice.startswith("Master "):
-                        learning_goal = goal_choice[7:]
-                    else:
-                        learning_goal = goal_choice
-                    
-                # Course outline state management in session state
-                if "course_goal" not in st.session_state:
-                    st.session_state["course_goal"] = ""
-                if "course_outline" not in st.session_state:
-                    st.session_state["course_outline"] = None
-                if "course_weeks" not in st.session_state:
-                    st.session_state["course_weeks"] = {}
-                if "course_days" not in st.session_state:
-                    st.session_state["course_days"] = {}
-                    
-                # If user switches goals, clear previous course state
-                state_key = f"{learning_goal}"
-                if st.session_state.get("course_state_key") != state_key:
-                    st.session_state["course_state_key"] = state_key
-                    st.session_state["course_outline"] = None
-                    st.session_state["course_weeks"] = {}
-                    st.session_state["course_days"] = {}
-                    if "chat_messages" in st.session_state:
-                        del st.session_state["chat_messages"]
-                    
-                generate_course_btn = st.button("🚀 Generate Course Outline (Groq AI)")
-                
-                if generate_course_btn:
-                    with st.spinner("Generating structured weekly course outline using Groq API..."):
-                        try:
-                            outline = generate_course_outline(learning_goal)
-                            st.session_state["course_outline"] = outline
-                            st.session_state["course_weeks"] = {}
-                            st.session_state["course_days"] = {}
-                            if "chat_messages" in st.session_state:
-                                del st.session_state["chat_messages"]
-                            st.success("Successfully generated course outline!")
-                            st.rerun()
-                        except Exception as gen_err:
-                            st.error(f"Failed to generate course outline: {str(gen_err)}")
-                            
-                outline = st.session_state["course_outline"]
-                if outline:
-                    st.markdown(f"### 📖 Course: {outline.get('title', learning_goal)}")
-                    st.write(outline.get("description", ""))
-                    
-                    prereqs = outline.get("prerequisites", [])
-                    if prereqs:
-                        st.markdown("**📋 Prerequisites & Basics:**")
-                        prereqs_badges = "".join([f'<span class="badge badge-normal" style="margin-right: 5px;">{p}</span>' for p in prereqs])
-                        st.markdown(f'<div>{prereqs_badges}</div><br>', unsafe_allow_html=True)
-                            
-                    st.markdown("---")
-                    st.markdown("### 📅 Weekly Syllabus")
-                    
-                    weeks = outline.get("weeks", [])
-                    for w in weeks:
-                        w_num = w.get("week")
-                        w_title = w.get("title", f"Week {w_num}")
-                        w_concepts = w.get("concepts", [])
-                        w_focus = w.get("focus", "theory")
-                        
-                        week_key = f"w_{w_num}"
-                        
-                        with st.expander(f"Week {w_num}: {w_title} ({w_focus.capitalize()})"):
-                            if w_concepts:
-                                st.write("**Core Concepts:**")
-                                badges = "".join([f'<span class="concept-tag" style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; font-size: 0.8rem; margin: 3px; border: 1px solid rgba(99, 102, 241, 0.2);">{c}</span>' for c in w_concepts])
-                                st.markdown(f'<div>{badges}</div><br>', unsafe_allow_html=True)
                                 
-                            # Check if days breakdown for this week is loaded
-                            week_details = st.session_state["course_weeks"].get(week_key)
-                            
-                            if not week_details:
-                                load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
-                                if load_week_btn:
-                                    with st.spinner(f"Generating daily tasks for Week {w_num} using Groq..."):
-                                        try:
-                                            w_data = generate_week_details(
-                                                learning_goal, w_num, w_title, w_concepts
-                                            )
-                                            st.session_state["course_weeks"][week_key] = w_data
-                                            st.rerun()
-                                        except Exception as w_err:
-                                            st.error(f"Failed to load week details: {str(w_err)}")
+                            st.markdown("#### 💡 Recommended Practical Projects")
+                            projects = insights.get("project_ideas", [])
+                            if projects:
+                                for proj in projects:
+                                    st.markdown(proj if proj.startswith("-") else f"- {proj}")
                             else:
-                                days = week_details.get("days", [])
-                                st.write("**Daily Schedule:**")
-                                for d in days:
-                                    d_num = d.get("day")
-                                    d_title = d.get("title", f"Day {d_num}")
-                                    d_type = d.get("task_type", "theory")
-                                    d_duration = d.get("duration_minutes", 60)
-                                    d_concepts = d.get("concepts", [])
-                                    
-                                    day_key = f"d_{w_num}_{d_num}"
-                                    
-                                    st.markdown(f"**Day {d_num}: {d_title}**")
-                                    st.caption(f"⏱ {d_duration} mins | 🏷 Type: {d_type.capitalize()}")
-                                    if d_concepts:
-                                        st.write("Concepts: " + ", ".join(d_concepts))
-                                        
-                                    # Lazy load day content
-                                    day_content = st.session_state["course_days"].get(day_key)
-                                    if not day_content:
-                                        load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
-                                        if load_day_btn:
-                                            with st.spinner(f"Generating details via Groq & searching resources via Tavily..."):
-                                                try:
-                                                    d_data = generate_day_details(
-                                                        learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration
-                                                    )
-                                                    st.session_state["course_days"][day_key] = d_data
-                                                    st.rerun()
-                                                except Exception as d_err:
-                                                    st.error(f"Failed to load day content: {str(d_err)}")
+                                st.info("No project recommendations listed.")
+                            
+                            st.markdown("#### 🗣️ Interview Prep Topics")
+                            tips = insights.get("interview_tips", [])
+                            if tips:
+                                for tip in tips:
+                                    st.markdown(tip if tip.startswith("-") else f"- {tip}")
+                            else:
+                                st.info("No interview preparation topics listed.")
+                            
+                            st.markdown("#### 🗺️ Next Steps Learning Roadmap")
+                            st.write(insights.get("learning_roadmap", "Not available."))
+                        
+                        except Exception as t_err:
+                            st.error(f"Failed to fetch market insights: {str(t_err)}")
+                        
+                with tab5:
+                    st.write(f"### 💼 Live Jobs & Internships for **{selected_role}**")
+                    st.write("Browse current openings scraped in real-time from LinkedIn, Naukri.com, Indeed, Internshala, and other hiring portals:")
+                
+                    with st.spinner("🔍 Querying job boards via Tavily..."):
+                        try:
+                            from tavily_helper import get_active_jobs_and_internships
+                        
+                            @st.cache_data(ttl=1800)
+                            def fetch_live_job_listings(role):
+                                return get_active_jobs_and_internships(role)
+                            
+                            jobs_data = fetch_live_job_listings(selected_role)
+                            listings = jobs_data.get("listings", [])
+                        
+                            if listings:
+                                # Count jobs vs internships
+                                jobs_count = sum(1 for j in listings if j.get("type", "Job") == "Job")
+                                intern_count = sum(1 for j in listings if j.get("type", "") == "Internship")
+                                st.markdown(f"Found **{len(listings)}** openings ({jobs_count} Jobs, {intern_count} Internships)")
+                            
+                                for idx, job in enumerate(listings):
+                                    title = job.get("title", "N/A")
+                                    company = job.get("company", "N/A")
+                                    platform = job.get("platform", "Direct Link")
+                                    job_type = job.get("type", "Job")
+                                    url = job.get("url", "#")
+                                    desc = job.get("description", "")
+                                
+                                    # Color code by type
+                                    if job_type == "Internship":
+                                        type_bg = "rgba(168, 85, 247, 0.15)"
+                                        type_color = "#c084fc"
+                                        border_color = "#a855f7"
                                     else:
-                                        st.markdown(f"**Explanation:**\n{day_content.get('description', '')}")
-                                        
-                                        toc = day_content.get("table_of_contents", [])
-                                        if toc:
-                                            st.write("**Topics Covered:**")
-                                            for item in toc:
-                                                st.markdown(f"- {item}")
-                                                
-                                        # Resources rendering
-                                        resources = day_content.get("resources", [])
-                                        if resources:
-                                            st.write("**🔎 Recommended Resources & Tutorials (via Tavily):**")
-                                            for res in resources:
-                                                res_title = res.get("title", "Resource")
-                                                res_url = res.get("url", "#")
-                                                res_source = res.get("source", "web")
-                                                res_desc = res.get("description", "")
-                                                
-                                                if res_source == "youtube":
-                                                    icon = "🎥 [YouTube Tutorial]"
-                                                elif res_source == "research_paper":
-                                                    icon = "🎓 [Research Paper]"
-                                                else:
-                                                    icon = "📖 [Official Documentation]"
-                                                    
-                                                st.markdown(f"- **{icon} [{res_title}]({res_url})**")
-                                                if res_desc:
-                                                    st.markdown(f"  *{res_desc}*")
-                                                    
-                                    st.markdown("---")
-                                    
-                    # ─── Chatbot Section ───────────────────
-                    st.markdown("---")
-                    st.markdown("### 💬 Course Chatbot Assistant (Ollama)")
-                    if not ollama_connected:
-                        st.info("ℹ️ *Note: Local Ollama AI Chatbot is currently offline. Start Ollama (`ollama serve`) locally on port 11434 to chat interactively with your course assistant.*")
+                                        type_bg = "rgba(16, 185, 129, 0.15)"
+                                        type_color = "#6ee7b7"
+                                        border_color = "#10b981"
+                                
+                                    st.markdown(f"""
+                                    <div class="glass-card" style="padding: 15px; margin-bottom: 12px; border-left: 4px solid {border_color};">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px; flex-wrap: wrap; gap: 6px;">
+                                            <h5 style="margin: 0; font-size: 1.05rem; color: {type_color} !important;">{title}</h5>
+                                            <div style="display: flex; gap: 6px;">
+                                                <span style="font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; background: {type_bg}; color: {type_color}; font-weight: 700;">{job_type}</span>
+                                                <span style="font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; background: rgba(59, 130, 246, 0.1); color: #60a5fa; font-weight: 600;">{platform}</span>
+                                            </div>
+                                        </div>
+                                        <p style="margin: 4px 0 8px 0; font-size: 0.9rem; color: #e5e7eb;">🏢 <strong>{company}</strong></p>
+                                        <p style="margin: 0 0 10px 0; font-size: 0.83rem; color: #9ca3af; line-height: 1.4;">{desc}</p>
+                                        <a href="{url}" target="_blank" style="text-decoration: none; display: inline-block; font-size: 0.8rem; font-weight: 700; padding: 6px 14px; border-radius: 6px; color: #064e3b; background-color: #34d399; transition: all 0.2s;">🔗 Apply on {platform}</a>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                            else:
+                                st.info("No active jobs or internships found for this role at the moment. Please try searching again later.")
+                        except Exception as jobs_err:
+                            st.error(f"Failed to fetch job opportunities: {str(jobs_err)}")
+                        
+                with tab6:
+                    st.write("### 📚 AI Course Generator & Educational Assistant")
+                    st.write("Generate a personalized week-by-week learning roadmap (via Groq AI), search research resources (via Tavily), and discuss topics with an AI Assistant.")
+                
+                    # Check health of local Ollama server
+                    @st.cache_resource(ttl=30)
+                    def get_ollama_status():
+                        try:
+                            return check_ollama_health()
+                        except Exception as e:
+                            return {"status": "disconnected", "error": str(e)}
+
+                    health_data = get_ollama_status()
+                    ollama_connected = (health_data.get("status") == "connected")
+                
+                    # Populate learning goal options from selected role or missing skills
+                    goal_options = []
+                    if selected_role:
+                        goal_options.append(f"Learn {selected_role}")
+                    if missing:
+                        for ms in missing:
+                            goal_options.append(f"Master {ms}")
+                    goal_options.append("Custom Goal...")
+                
+                    st.markdown("#### 🎯 Choose Learning Goal")
+                    goal_choice = st.selectbox(
+                        "Select a goal based on your recommendations or enter a custom topic:",
+                        options=goal_options,
+                        index=0
+                    )
+                
+                    if goal_choice == "Custom Goal...":
+                        learning_goal = st.text_input("Enter custom learning goal:", value="Learn Python Programming")
                     else:
-                        st.success("✅ Local Ollama Server Connected")
-                        @st.cache_data(ttl=60)
-                        def get_cached_models():
+                        if goal_choice.startswith("Learn "):
+                            learning_goal = goal_choice[6:]
+                        elif goal_choice.startswith("Master "):
+                            learning_goal = goal_choice[7:]
+                        else:
+                            learning_goal = goal_choice
+                    
+                    # Course outline state management in session state
+                    if "course_goal" not in st.session_state:
+                        st.session_state["course_goal"] = ""
+                    if "course_outline" not in st.session_state:
+                        st.session_state["course_outline"] = None
+                    if "course_weeks" not in st.session_state:
+                        st.session_state["course_weeks"] = {}
+                    if "course_days" not in st.session_state:
+                        st.session_state["course_days"] = {}
+                    
+                    # If user switches goals, clear previous course state
+                    state_key = f"{learning_goal}"
+                    if st.session_state.get("course_state_key") != state_key:
+                        st.session_state["course_state_key"] = state_key
+                        st.session_state["course_outline"] = None
+                        st.session_state["course_weeks"] = {}
+                        st.session_state["course_days"] = {}
+                        if "chat_messages" in st.session_state:
+                            del st.session_state["chat_messages"]
+                    
+                    generate_course_btn = st.button("🚀 Generate Course Outline (Groq AI)")
+                
+                    if generate_course_btn:
+                        with st.spinner("Generating structured weekly course outline using Groq API..."):
                             try:
-                                return list_models()
-                            except Exception:
-                                return []
-
-                        local_models = get_cached_models()
-                        model_names = [m["name"] for m in local_models] if local_models else []
-                        
-                        if not model_names:
-                            st.warning("⚠️ No local Ollama models found. Run `ollama pull deepseek-r1:1.5b` to enable local chat.")
-                        else:
-                            selected_model = st.selectbox(
-                                "Select Local Ollama Model (for Chatbot)",
-                                options=model_names,
-                                index=0
-                            )
-                            st.write(f"Ask questions about the **{outline.get('title')}** course using `{selected_model}`.")
+                                outline = generate_course_outline(learning_goal)
+                                st.session_state["course_outline"] = outline
+                                st.session_state["course_weeks"] = {}
+                                st.session_state["course_days"] = {}
+                                if "chat_messages" in st.session_state:
+                                    del st.session_state["chat_messages"]
+                                st.success("Successfully generated course outline!")
+                                st.rerun()
+                            except Exception as gen_err:
+                                st.error(f"Failed to generate course outline: {str(gen_err)}")
                             
-                            if "chat_messages" not in st.session_state:
-                                st.session_state["chat_messages"] = []
+                    outline = st.session_state["course_outline"]
+                    if outline:
+                        st.markdown(f"### 📖 Course: {outline.get('title', learning_goal)}")
+                        st.write(outline.get("description", ""))
+                    
+                        prereqs = outline.get("prerequisites", [])
+                        if prereqs:
+                            st.markdown("**📋 Prerequisites & Basics:**")
+                            prereqs_badges = "".join([f'<span class="badge badge-normal" style="margin-right: 5px;">{p}</span>' for p in prereqs])
+                            st.markdown(f'<div>{prereqs_badges}</div><br>', unsafe_allow_html=True)
+                            
+                        st.markdown("---")
+                        st.markdown("### 📅 Weekly Syllabus")
+                    
+                        weeks = outline.get("weeks", [])
+                        for w in weeks:
+                            w_num = w.get("week")
+                            w_title = w.get("title", f"Week {w_num}")
+                            w_concepts = w.get("concepts", [])
+                            w_focus = w.get("focus", "theory")
+                        
+                            week_key = f"w_{w_num}"
+                        
+                            with st.expander(f"Week {w_num}: {w_title} ({w_focus.capitalize()})"):
+                                if w_concepts:
+                                    st.write("**Core Concepts:**")
+                                    badges = "".join([f'<span class="concept-tag" style="display: inline-block; padding: 4px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; font-size: 0.8rem; margin: 3px; border: 1px solid rgba(99, 102, 241, 0.2);">{c}</span>' for c in w_concepts])
+                                    st.markdown(f'<div>{badges}</div><br>', unsafe_allow_html=True)
                                 
-                            for msg in st.session_state["chat_messages"]:
-                                with st.chat_message(msg["role"]):
-                                    st.markdown(msg["content"])
+                                # Check if days breakdown for this week is loaded
+                                week_details = st.session_state["course_weeks"].get(week_key)
+                            
+                                if not week_details:
+                                    load_week_btn = st.button(f"Generate Daily Breakdown for Week {w_num}", key=f"btn_w_{w_num}")
+                                    if load_week_btn:
+                                        with st.spinner(f"Generating daily tasks for Week {w_num} using Groq..."):
+                                            try:
+                                                w_data = generate_week_details(
+                                                    learning_goal, w_num, w_title, w_concepts
+                                                )
+                                                st.session_state["course_weeks"][week_key] = w_data
+                                                st.rerun()
+                                            except Exception as w_err:
+                                                st.error(f"Failed to load week details: {str(w_err)}")
+                                else:
+                                    days = week_details.get("days", [])
+                                    st.write("**Daily Schedule:**")
+                                    for d in days:
+                                        d_num = d.get("day")
+                                        d_title = d.get("title", f"Day {d_num}")
+                                        d_type = d.get("task_type", "theory")
+                                        d_duration = d.get("duration_minutes", 60)
+                                        d_concepts = d.get("concepts", [])
                                     
-                            if user_chat_input := st.chat_input("Type your question here..."):
-                                with st.chat_message("user"):
-                                    st.markdown(user_chat_input)
-                                st.session_state["chat_messages"].append({"role": "user", "content": user_chat_input})
-                                
-                                with st.spinner("AI Tutor is thinking..."):
-                                    try:
-                                        chat_payload = [
-                                            {"role": "system", "content": "You are a professional educational tutor."},
-                                            {"role": "system", "content": f"Course: '{outline.get('title')}' Goal: '{learning_goal}'."},
-                                        ]
-                                        for msg in st.session_state["chat_messages"][-8:]:
-                                            chat_payload.append({"role": msg["role"], "content": msg["content"]})
-                                            
-                                        assistant_response = call_ollama_chat(selected_model, chat_payload)
+                                        day_key = f"d_{w_num}_{d_num}"
+                                    
+                                        st.markdown(f"**Day {d_num}: {d_title}**")
+                                        st.caption(f"⏱ {d_duration} mins | 🏷 Type: {d_type.capitalize()}")
+                                        if d_concepts:
+                                            st.write("Concepts: " + ", ".join(d_concepts))
                                         
-                                        with st.chat_message("assistant"):
-                                            st.markdown(assistant_response)
-                                        st.session_state["chat_messages"].append({"role": "assistant", "content": assistant_response})
-                                        st.rerun()
-                                    except Exception as chat_err:
-                                        st.error(f"Chatbot failed: {str(chat_err)}")
-
-            with tab7:
-                st.write(f"### ⚡ ATS Resume Bullet Optimizer for **{selected_role}**")
-                st.write("Transform your skill gaps into ATS-optimized, high-impact **STAR-method** (Situation, Task, Action, Result) resume bullet points with quantified metrics:")
-                
-                bullet_key = f"ats_bullets_{selected_role}"
-                if bullet_key not in st.session_state:
-                    st.session_state[bullet_key] = None
-                    
-                if st.button("✨ Generate Tailored Resume Bullets & Summary", key=f"btn_gen_bullets_{selected_role}"):
-                    with st.spinner("Generating ATS resume bullets using Groq AI..."):
-                        try:
-                            res_data = generate_ats_resume_bullets(selected_role, matched, missing, combined_skills)
-                            st.session_state[bullet_key] = res_data
-                            st.success("Successfully generated ATS bullet points!")
-                        except Exception as bul_err:
-                            st.error(f"Failed to generate ATS resume bullets: {str(bul_err)}")
-                            
-                bullets_data = st.session_state.get(bullet_key)
-                if bullets_data:
-                    st.markdown("#### 📝 Tailored Executive Summary (for top of resume)")
-                    st.info(bullets_data.get("professional_summary", "N/A"))
-                    
-                    st.markdown("#### 🚀 STAR-Formatted Experience Bullets")
-                    bullets_list = bullets_data.get("bullet_points", [])
-                    raw_bullets_text = []
-                    for idx, bp in enumerate(bullets_list, 1):
-                        skill_tag = bp.get("skill_targeted", "Skill")
-                        star_txt = bp.get("star_bullet", "")
-                        keywords = bp.get("ats_keywords", [])
-                        raw_bullets_text.append(f"• {star_txt}")
-                        
-                        kw_badges = "".join([f'<span class="badge badge-normal" style="font-size:0.7rem; padding:2px 6px; margin-right:4px;">{k}</span>' for k in keywords])
-                        st.markdown(f"""
-                        <div class="glass-card" style="padding: 15px; margin-bottom: 12px; border-left: 3px solid #34d399;">
-                            <div style="font-size: 0.8rem; color: #a5b4fc; font-weight: 700; margin-bottom: 4px;">TARGETING: {skill_tag.upper()}</div>
-                            <p style="font-size: 0.95rem; color: #f3f4f6; margin-bottom: 8px;"><strong>• {star_txt}</strong></p>
-                            <div>{kw_badges}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                    st.markdown("#### 📋 Copy-Paste Ready Resume Bullets")
-                    st.code("\n".join(raw_bullets_text), language="text")
-                    
-                    st.markdown("#### 💡 ATS Strategy & Formatting Tips")
-                    tips = bullets_data.get("ats_optimization_tips", [])
-                    for tip in tips:
-                        st.markdown(f"- {tip}")
-                        
-            with tab8:
-                st.write(f"### 🎙️ AI Interactive Mock Interview Simulator for **{selected_role}**")
-                st.write("Practice real technical, system design, and behavioral questions targeted at your missing skills. Submit your answers for instant AI grading and feedback.")
-                
-                q_key = f"mock_qs_{selected_role}"
-                eval_key = f"mock_eval_{selected_role}"
-                
-                if q_key not in st.session_state:
-                    st.session_state[q_key] = None
-                if eval_key not in st.session_state:
-                    st.session_state[eval_key] = None
-                    
-                if st.button("🎲 Generate Practice Interview Questions", key=f"btn_gen_qs_{selected_role}"):
-                    with st.spinner("Generating tailored interview questions via Groq AI..."):
-                        try:
-                            qs_data = generate_mock_interview_questions(selected_role, matched, missing)
-                            st.session_state[q_key] = qs_data
-                            st.session_state[eval_key] = None
-                            st.success("Generated interview questions!")
-                        except Exception as q_err:
-                            st.error(f"Failed to generate questions: {str(q_err)}")
-                            
-                questions_data = st.session_state.get(q_key)
-                if questions_data and questions_data.get("questions"):
-                    qs_list = questions_data["questions"]
-                    
-                    q_options = [f"Q{q['id']}: [{q['category']}] ({q['difficulty']})" for q in qs_list]
-                    selected_q_label = st.selectbox("Select Question to Practice:", options=q_options)
-                    
-                    q_index = q_options.index(selected_q_label)
-                    active_q = qs_list[q_index]
-                    
-                    st.markdown(f"""
-                    <div class="glass-card" style="padding: 20px; border-color: rgba(99, 102, 241, 0.4); margin-bottom: 15px;">
-                        <span style="font-size: 0.8rem; background: rgba(99, 102, 241, 0.2); color: #818cf8; padding: 3px 8px; border-radius: 4px; font-weight: 700;">{active_q.get('category', 'Technical')} • {active_q.get('difficulty', 'Medium')}</span>
-                        <h4 style="margin: 12px 0 8px 0; color: #f3f4f6 !important;">{active_q.get('question')}</h4>
-                        <p style="font-size: 0.82rem; color: #9ca3af; margin-bottom: 0;">Expected concepts to cover: <strong>{", ".join(active_q.get('key_concepts_expected', []))}</strong></p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    user_answer_text = st.text_area("Your Response / Answer:", height=150, placeholder="Type your detailed answer here... Use STAR method if applicable.", key=f"ta_ans_{selected_role}_{q_index}")
-                    
-                    if st.button("🧠 Evaluate My Answer", key=f"btn_eval_{selected_role}_{q_index}"):
-                        if not user_answer_text.strip():
-                            st.warning("Please enter your answer before evaluating.")
-                        else:
-                            with st.spinner("AI Interviewer is evaluating your response..."):
-                                try:
-                                    eval_result = evaluate_interview_answer(
-                                        selected_role,
-                                        active_q.get('question'),
-                                        active_q.get('key_concepts_expected', []),
-                                        user_answer_text
-                                    )
-                                    st.session_state[eval_key] = eval_result
-                                except Exception as eval_err:
-                                    st.error(f"Evaluation failed: {str(eval_err)}")
+                                        # Lazy load day content
+                                        day_content = st.session_state["course_days"].get(day_key)
+                                        if not day_content:
+                                            load_day_btn = st.button(f"Load Day {d_num} Content", key=f"btn_d_{w_num}_{d_num}")
+                                            if load_day_btn:
+                                                with st.spinner(f"Generating details via Groq & searching resources via Tavily..."):
+                                                    try:
+                                                        d_data = generate_day_details(
+                                                            learning_goal, d_title, (w_num - 1) * 7 + d_num, d_type, d_duration
+                                                        )
+                                                        st.session_state["course_days"][day_key] = d_data
+                                                        st.rerun()
+                                                    except Exception as d_err:
+                                                        st.error(f"Failed to load day content: {str(d_err)}")
+                                        else:
+                                            st.markdown(f"**Explanation:**\n{day_content.get('description', '')}")
+                                        
+                                            toc = day_content.get("table_of_contents", [])
+                                            if toc:
+                                                st.write("**Topics Covered:**")
+                                                for item in toc:
+                                                    st.markdown(f"- {item}")
+                                                
+                                            # Resources rendering
+                                            resources = day_content.get("resources", [])
+                                            if resources:
+                                                st.write("**🔎 Recommended Resources & Tutorials (via Tavily):**")
+                                                for res in resources:
+                                                    res_title = res.get("title", "Resource")
+                                                    res_url = res.get("url", "#")
+                                                    res_source = res.get("source", "web")
+                                                    res_desc = res.get("description", "")
+                                                
+                                                    if res_source == "youtube":
+                                                        icon = "🎥 [YouTube Tutorial]"
+                                                    elif res_source == "research_paper":
+                                                        icon = "🎓 [Research Paper]"
+                                                    else:
+                                                        icon = "📖 [Official Documentation]"
+                                                    
+                                                    st.markdown(f"- **{icon} [{res_title}]({res_url})**")
+                                                    if res_desc:
+                                                        st.markdown(f"  *{res_desc}*")
+                                                    
+                                        st.markdown("---")
                                     
-                    eval_data = st.session_state.get(eval_key)
-                    if eval_data:
-                        score = eval_data.get("score", 70)
-                        rating = eval_data.get("rating", "Good Effort")
-                        
-                        score_color = "#10b981" if score >= 80 else "#f59e0b" if score >= 60 else "#ef4444"
-                        
-                        st.markdown(f"""
-                        <div class="glass-card" style="padding: 20px; border-color: {score_color}; margin-top: 15px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <h4 style="margin: 0; color: {score_color} !important;">Score: {score}/100 — {rating}</h4>
-                            </div>
-                            <p style="margin: 8px 0; color: #e5e7eb;"><strong>Feedback:</strong> {eval_data.get('feedback_summary', '')}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        col_ev1, col_ev2 = st.columns(2)
-                        with col_ev1:
-                            st.markdown("#### ✅ Strengths in your response")
-                            for s in eval_data.get("strengths", []):
-                                st.markdown(f"- {s}")
-                        with col_ev2:
-                            st.markdown("#### 💡 Concepts to improve/add")
-                            for m in eval_data.get("missing_concepts", []):
-                                st.markdown(f"- {m}")
-                                
-                        st.markdown("#### 🌟 Model STAR Answer")
-                        st.success(eval_data.get("model_answer", "N/A"))
+                        # ─── Chatbot Section ───────────────────
+                        st.markdown("---")
+                        st.markdown("### 💬 Course Chatbot Assistant (Ollama)")
+                        if not ollama_connected:
+                            st.info("ℹ️ *Note: Local Ollama AI Chatbot is currently offline. Start Ollama (`ollama serve`) locally on port 11434 to chat interactively with your course assistant.*")
+                        else:
+                            st.success("✅ Local Ollama Server Connected")
+                            @st.cache_data(ttl=60)
+                            def get_cached_models():
+                                try:
+                                    return list_models()
+                                except Exception:
+                                    return []
 
-    else:
-        # Default placeholder container with rich instructions
-        st.markdown("""
-        <div class="glass-card" style="text-align: center; padding: 70px 40px;">
-            <div style="font-size: 4.5rem; margin-bottom: 24px;">🤖</div>
-            <h3>Waiting for Career Analysis Inputs...</h3>
-            <p style="color: #9ca3af; max-width: 500px; margin: 0 auto 24px auto;">
-                Provide your academic parameters and either upload your resume (PDF/DOCX) or enter technical skills on the left panel, then click the Analyze button. The hybrid engine will run both Profile-based and Skills-based Random Forest models to recommend your ideal careers.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+                            local_models = get_cached_models()
+                            model_names = [m["name"] for m in local_models] if local_models else []
+                        
+                            if not model_names:
+                                st.warning("⚠️ No local Ollama models found. Run `ollama pull deepseek-r1:1.5b` to enable local chat.")
+                            else:
+                                selected_model = st.selectbox(
+                                    "Select Local Ollama Model (for Chatbot)",
+                                    options=model_names,
+                                    index=0
+                                )
+                                st.write(f"Ask questions about the **{outline.get('title')}** course using `{selected_model}`.")
+                            
+                                if "chat_messages" not in st.session_state:
+                                    st.session_state["chat_messages"] = []
+                                
+                                for msg in st.session_state["chat_messages"]:
+                                    with st.chat_message(msg["role"]):
+                                        st.markdown(msg["content"])
+                                    
+                                if user_chat_input := st.chat_input("Type your question here..."):
+                                    with st.chat_message("user"):
+                                        st.markdown(user_chat_input)
+                                    st.session_state["chat_messages"].append({"role": "user", "content": user_chat_input})
+                                
+                                    with st.spinner("AI Tutor is thinking..."):
+                                        try:
+                                            chat_payload = [
+                                                {"role": "system", "content": "You are a professional educational tutor."},
+                                                {"role": "system", "content": f"Course: '{outline.get('title')}' Goal: '{learning_goal}'."},
+                                            ]
+                                            for msg in st.session_state["chat_messages"][-8:]:
+                                                chat_payload.append({"role": msg["role"], "content": msg["content"]})
+                                            
+                                            assistant_response = call_ollama_chat(selected_model, chat_payload)
+                                        
+                                            with st.chat_message("assistant"):
+                                                st.markdown(assistant_response)
+                                            st.session_state["chat_messages"].append({"role": "assistant", "content": assistant_response})
+                                            st.rerun()
+                                        except Exception as chat_err:
+                                            st.error(f"Chatbot failed: {str(chat_err)}")
+
+                with tab7:
+                    st.write(f"### ⚡ ATS Resume Bullet Optimizer for **{selected_role}**")
+                    st.write("Transform your skill gaps into ATS-optimized, high-impact **STAR-method** (Situation, Task, Action, Result) resume bullet points with quantified metrics:")
+                
+                    bullet_key = f"ats_bullets_{selected_role}"
+                    if bullet_key not in st.session_state:
+                        st.session_state[bullet_key] = None
+                    
+                    if st.button("✨ Generate Tailored Resume Bullets & Summary", key=f"btn_gen_bullets_{selected_role}"):
+                        with st.spinner("Generating ATS resume bullets using Groq AI..."):
+                            try:
+                                res_data = generate_ats_resume_bullets(selected_role, matched, missing, combined_skills)
+                                st.session_state[bullet_key] = res_data
+                                st.success("Successfully generated ATS bullet points!")
+                            except Exception as bul_err:
+                                st.error(f"Failed to generate ATS resume bullets: {str(bul_err)}")
+                            
+                    bullets_data = st.session_state.get(bullet_key)
+                    if bullets_data:
+                        st.markdown("#### 📝 Tailored Executive Summary (for top of resume)")
+                        st.info(bullets_data.get("professional_summary", "N/A"))
+                    
+                        st.markdown("#### 🚀 STAR-Formatted Experience Bullets")
+                        bullets_list = bullets_data.get("bullet_points", [])
+                        raw_bullets_text = []
+                        for idx, bp in enumerate(bullets_list, 1):
+                            skill_tag = bp.get("skill_targeted", "Skill")
+                            star_txt = bp.get("star_bullet", "")
+                            keywords = bp.get("ats_keywords", [])
+                            raw_bullets_text.append(f"• {star_txt}")
+                        
+                            kw_badges = "".join([f'<span class="badge badge-normal" style="font-size:0.7rem; padding:2px 6px; margin-right:4px;">{k}</span>' for k in keywords])
+                            st.markdown(f"""
+                            <div class="glass-card" style="padding: 15px; margin-bottom: 12px; border-left: 3px solid #34d399;">
+                                <div style="font-size: 0.8rem; color: #a5b4fc; font-weight: 700; margin-bottom: 4px;">TARGETING: {skill_tag.upper()}</div>
+                                <p style="font-size: 0.95rem; color: #f3f4f6; margin-bottom: 8px;"><strong>• {star_txt}</strong></p>
+                                <div>{kw_badges}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        st.markdown("#### 📋 Copy-Paste Ready Resume Bullets")
+                        st.code("\n".join(raw_bullets_text), language="text")
+                    
+                        st.markdown("#### 💡 ATS Strategy & Formatting Tips")
+                        tips = bullets_data.get("ats_optimization_tips", [])
+                        for tip in tips:
+                            st.markdown(f"- {tip}")
+
+        else:
+            # Default placeholder container with rich instructions
+            st.markdown("""
+            <div class="glass-card" style="text-align: center; padding: 70px 40px;">
+                <div style="font-size: 4.5rem; margin-bottom: 24px;">🤖</div>
+                <h3>Waiting for Career Analysis Inputs...</h3>
+                <p style="color: #9ca3af; max-width: 500px; margin: 0 auto 24px auto;">
+                    Provide your academic parameters and either upload your resume (PDF/DOCX) or enter technical skills on the left panel, then click the Analyze button. The hybrid engine will run both Profile-based and Skills-based Random Forest models to recommend your ideal careers.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
